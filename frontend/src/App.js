@@ -12,6 +12,7 @@ import {
 import DocumentUpload from './components/DocumentUpload';
 import ContractList from './components/ContractList';
 import ContractDetail from './components/ContractDetail';
+import ContractDashboard from './components/ContractDashboard'; // Add this import
 
 function App() {
   const [activeTab, setActiveTab] = useState(0);
@@ -20,19 +21,19 @@ function App() {
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
-    if (newValue === 0) {
+    if (newValue === 0 || newValue === 1) {
       setSelectedContractId(null);
     }
   };
 
   const handleUploadSuccess = () => {
     setRefreshList(!refreshList);
-    setActiveTab(1);
+    setActiveTab(2); // Changed to Contract List tab
   };
 
   const handleSelectContract = (contract) => {
     setSelectedContractId(contract.id);
-    setActiveTab(2);
+    setActiveTab(3); // Changed to Contract Details tab
   };
 
   const handleReviewUpdate = () => {
@@ -45,7 +46,7 @@ function App() {
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Contract Intelligence Agent
+            Enterprise Contract Intelligence Platform
           </Typography>
         </Toolbar>
       </AppBar>
@@ -53,24 +54,22 @@ function App() {
       <Container maxWidth="xl">
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
           <Tabs value={activeTab} onChange={handleTabChange}>
+            <Tab label="Dashboard" />
             <Tab label="Upload" />
             <Tab label="Contract List" />
             <Tab label="Contract Details" disabled={!selectedContractId} />
           </Tabs>
         </Box>
 
-        {activeTab === 0 && (
-          <DocumentUpload onUploadSuccess={handleUploadSuccess} />
-        )}
-
-        {activeTab === 1 && (
+        {activeTab === 0 && <ContractDashboard />}
+        {activeTab === 1 && <DocumentUpload onUploadSuccess={handleUploadSuccess} />}
+        {activeTab === 2 && (
           <ContractList
             key={refreshList}
             onSelectContract={handleSelectContract}
           />
         )}
-
-        {activeTab === 2 && selectedContractId && (
+        {activeTab === 3 && selectedContractId && (
           <ContractDetail
             contractId={selectedContractId}
             onReviewUpdate={handleReviewUpdate}

@@ -58,3 +58,51 @@ export const reviewContract = async (id, reviewed = true) => {
   return response.data;
 };
 
+export const getContractSummary = async () => {
+  const response = await api.get('/contracts/summary');
+  return response.data;
+};
+
+// Get contract versions
+export const getContractVersions = async (contractId) => {
+  const response = await api.get(`/contracts/${contractId}/versions`);
+  return response.data;
+};
+
+// Get contract deltas
+export const getContractDeltas = async (contractId, versionFrom, versionTo) => {
+  const params = {};
+  if (versionFrom) params.version_from = versionFrom;
+  if (versionTo) params.version_to = versionTo;
+  
+  const response = await api.get(`/contracts/${contractId}/deltas`, { params });
+  return response.data;
+};
+
+// Advanced search
+export const advancedSearch = async (filters) => {
+  const response = await api.get('/contracts/search/advanced', { params: filters });
+  return response.data;
+};
+
+// Upload with amendment info
+export const uploadDocumentWithMetadata = async (file, metadata) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // Add metadata as query params or form fields
+  if (metadata.is_amendment) {
+    formData.append('is_amendment', 'true');
+    formData.append('parent_document_id', metadata.parent_document_id);
+    if (metadata.amendment_type) {
+      formData.append('amendment_type', metadata.amendment_type);
+    }
+  }
+  
+  const response = await api.post('/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
