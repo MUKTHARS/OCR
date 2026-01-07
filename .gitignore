@@ -1,0 +1,38 @@
+# Node / Frontend
+node_modules/
+dist/
+build/
+.npm/
+.cache/
+
+# Python
+venv/
+.env/
+__pycache__/
+*.pyc
+
+# Environment / Keys
+.env
+*.pem
+*.key
+*.crt
+*.p12
+
+# Logs
+logs/
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+docker-data/
+
+# Coverage / temporary
+coverage/
+tmp/
