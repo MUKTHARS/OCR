@@ -427,16 +427,62 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
             risk_factors_list = extract_risk_factors(extraction)
             
             # Save contract with all extracted fields
+            # contract = models.Contract(
+            #     document_id=document_id,
+            #     contract_type=extraction.get("contract_type", "Unknown"),
+            #     contract_subtype=extraction.get("contract_subtype"),
+            #     master_agreement_id=extraction.get("master_agreement_id"),
+            #     parties=extraction.get("parties", []),
+            #     effective_date=extraction.get("dates", {}).get("effective_date"),
+            #     expiration_date=extraction.get("dates", {}).get("expiration_date"),
+            #     execution_date=extraction.get("dates", {}).get("execution_date"),
+            #     termination_date=extraction.get("dates", {}).get("termination_date"),
+            #     total_value=extraction.get("financial", {}).get("total_value"),
+            #     currency=extraction.get("financial", {}).get("currency"),
+            #     payment_terms=extraction.get("financial", {}).get("payment_terms"),
+            #     billing_frequency=extraction.get("financial", {}).get("billing_frequency"),
+            #     signatories=signatories_list,
+            #     contacts=contacts_list,
+            #     auto_renewal=extraction.get("risk_indicators", {}).get("auto_renewal"),
+            #     renewal_notice_period=extraction.get("dates", {}).get("notice_period_days"),
+            #     termination_notice_period=extraction.get("dates", {}).get("notice_period_days"),
+            #     governing_law=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+            #     jurisdiction=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+            #     confidentiality=extraction.get("clauses", {}).get("confidentiality") is not None,
+            #     indemnification=extraction.get("clauses", {}).get("indemnification") is not None,
+            #     liability_cap=extraction.get("key_fields", {}).get("liability_cap", {}).get("value") if extraction.get("key_fields", {}).get("liability_cap") else None,
+            #     insurance_requirements=extraction.get("compliance_requirements", {}).get("minimum_coverage"),
+            #     service_levels=extraction.get("service_levels", {}),
+            #     deliverables=extraction.get("deliverables", []),
+            #     risk_score=extraction.get("risk_score", 0.0),
+            #     risk_factors=risk_factors_list,
+            #     clauses=extraction.get("clauses", {}),
+            #     key_fields=extraction.get("key_fields", {}),
+            #     extracted_metadata=extraction.get("metadata", {}),  # Changed from 'metadata' to 'extracted_metadata'
+            #     confidence_score=extraction.get("confidence_score", 0.0),
+            #     version=version,
+            #     previous_version_id=previous_contract.id if previous_contract else None,
+            #     change_summary=f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction"
+            # )
+            
+                # Helper function to clean date values
+            def clean_date(date_value):
+                """Convert empty strings to None for date fields"""
+                if not date_value or date_value == "" or date_value == "Unknown":
+                    return None
+                return date_value
+
+            # Save contract with all extracted fields
             contract = models.Contract(
                 document_id=document_id,
                 contract_type=extraction.get("contract_type", "Unknown"),
                 contract_subtype=extraction.get("contract_subtype"),
                 master_agreement_id=extraction.get("master_agreement_id"),
                 parties=extraction.get("parties", []),
-                effective_date=extraction.get("dates", {}).get("effective_date"),
-                expiration_date=extraction.get("dates", {}).get("expiration_date"),
-                execution_date=extraction.get("dates", {}).get("execution_date"),
-                termination_date=extraction.get("dates", {}).get("termination_date"),
+                effective_date=clean_date(extraction.get("dates", {}).get("effective_date")),
+                expiration_date=clean_date(extraction.get("dates", {}).get("expiration_date")),
+                execution_date=clean_date(extraction.get("dates", {}).get("execution_date")),
+                termination_date=clean_date(extraction.get("dates", {}).get("termination_date")),
                 total_value=extraction.get("financial", {}).get("total_value"),
                 currency=extraction.get("financial", {}).get("currency"),
                 payment_terms=extraction.get("financial", {}).get("payment_terms"),
@@ -458,13 +504,13 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                 risk_factors=risk_factors_list,
                 clauses=extraction.get("clauses", {}),
                 key_fields=extraction.get("key_fields", {}),
-                extracted_metadata=extraction.get("metadata", {}),  # Changed from 'metadata' to 'extracted_metadata'
+                extracted_metadata=extraction.get("metadata", {}),
                 confidence_score=extraction.get("confidence_score", 0.0),
                 version=version,
                 previous_version_id=previous_contract.id if previous_contract else None,
                 change_summary=f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction"
             )
-            
+
             local_db.add(contract)
             local_db.commit()
             local_db.refresh(contract)
@@ -676,3 +722,104 @@ async def review_contract(
     db.commit()
     
     return {"status": "success"}
+
+
+@app.post("/contracts/compare")
+async def compare_contracts(
+    compare_request: schemas.ContractCompareRequest,
+    db: Session = Depends(get_db)
+):
+    """Compare two contracts for differences"""
+    try:
+        # Get both contracts
+        contract1 = db.query(models.Contract)\
+            .filter(models.Contract.id == compare_request.contract_id_1)\
+            .first()
+        contract2 = db.query(models.Contract)\
+            .filter(models.Contract.id == compare_request.contract_id_2)\
+            .first()
+        
+        if not contract1 or not contract2:
+            raise HTTPException(status_code=404, detail="One or both contracts not found")
+        
+        # Use the processor to compare
+        comparison = processor.compare_versions(
+            contract1.clauses if contract1.clauses else {},
+            contract2.clauses if contract2.clauses else {}
+        )
+        
+        # Generate AI-powered comparison summary
+        comparison_summary = generate_comparison_summary(
+            contract1, 
+            contract2, 
+            comparison.get("deltas", [])
+        )
+        
+        return {
+            "contract1": {
+                "id": contract1.id,
+                "contract_type": contract1.contract_type,
+                "parties": contract1.parties,
+                "version": contract1.version
+            },
+            "contract2": {
+                "id": contract2.id,
+                "contract_type": contract2.contract_type,
+                "parties": contract2.parties,
+                "version": contract2.version
+            },
+            "comparison": comparison,
+            "summary": comparison_summary,
+            "suggested_actions": generate_suggested_actions(comparison)
+        }
+        
+    except Exception as e:
+        print(f"Error comparing contracts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def generate_comparison_summary(contract1, contract2, deltas):
+    """Generate AI-powered comparison summary"""
+    if not deltas:
+        return "No significant changes detected between the two contracts."
+    
+    # Count changes by category
+    financial_changes = sum(1 for d in deltas if "financial" in d["field_name"])
+    legal_changes = sum(1 for d in deltas if "clauses" in d["field_name"])
+    date_changes = sum(1 for d in deltas if "date" in d["field_name"])
+    
+    summary_parts = []
+    
+    if financial_changes > 0:
+        summary_parts.append(f"{financial_changes} financial change(s)")
+    if legal_changes > 0:
+        summary_parts.append(f"{legal_changes} legal clause change(s)")
+    if date_changes > 0:
+        summary_parts.append(f"{date_changes} date change(s)")
+    
+    if summary_parts:
+        return f"Key changes detected: {', '.join(summary_parts)}. Review highlighted sections for details."
+    
+    return "Minor formatting or textual changes detected."
+
+def generate_suggested_actions(comparison):
+    """Generate suggested actions based on comparison"""
+    actions = []
+    deltas = comparison.get("deltas", [])
+    
+    # Check for high-risk changes
+    high_risk_terms = ["liability", "indemnification", "termination", "penalty", "renewal"]
+    
+    for delta in deltas:
+        field_name = delta["field_name"].lower()
+        if any(term in field_name for term in high_risk_terms):
+            actions.append(f"Review {field_name} change - potential risk impact")
+    
+    # Check for financial changes
+    financial_changes = [d for d in deltas if "financial" in d["field_name"].lower()]
+    if financial_changes:
+        actions.append("Consult finance team on monetary changes")
+    
+    if not actions:
+        actions.append("No critical actions required")
+    
+    return actions

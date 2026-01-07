@@ -132,3 +132,8 @@ class ContractSummary(BaseModel):
     needs_review: int
     by_type: Dict[str, int]
     by_status: Dict[str, int]
+
+class ContractCompareRequest(BaseModel):
+    contract_id_1: int
+    contract_id_2: int
+    compare_type: Optional[str] = "detailed"  # "quick", "detailed", "financial"    

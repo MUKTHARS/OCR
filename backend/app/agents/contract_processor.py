@@ -444,11 +444,11 @@ class ContractProcessor:
             approx_tokens = len(text) / 4
             
             # If text is too large, split into chunks
-            if approx_tokens > 3000:  # Conservative threshold for GPT-4
+            if approx_tokens > 2000:  # Conservative threshold for GPT-4
                 print(f"Document too large ({approx_tokens:.0f} estimated tokens), processing in chunks")
                 
                 # Split text into chunks of ~2000 tokens each (8000 characters)
-                chunk_size = 8000
+                chunk_size = 6000
                 chunks = []
                 start = 0
                 
@@ -495,7 +495,7 @@ class ContractProcessor:
                                 {"role": "user", "content": chunk_prompt}
                             ],
                             temperature=0.1,
-                            max_tokens=2000,  # Conservative for chunks
+                            max_tokens=1500,  # Conservative for chunks
                             response_format={"type": "json_object"}
                         )
                         
@@ -536,7 +536,7 @@ class ContractProcessor:
                 {json.dumps(list(extracted_tables.keys()), indent=2)}
                 
                 Contract Text:
-                {text[:18000]}  # Leave room for response
+                {text[:12000]}  # Leave room for response
                 """
                 
                 response = client.chat.completions.create(
@@ -546,7 +546,7 @@ class ContractProcessor:
                         {"role": "user", "content": context}
                     ],
                     temperature=0.1,
-                    max_tokens=6000,  # Increased for detailed extraction
+                    max_tokens=4000,  # Increased for detailed extraction
                     response_format={"type": "json_object"}
                 )
                 

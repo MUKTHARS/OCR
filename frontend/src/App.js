@@ -12,7 +12,8 @@ import {
 import DocumentUpload from './components/DocumentUpload';
 import ContractList from './components/ContractList';
 import ContractDetail from './components/ContractDetail';
-import ContractDashboard from './components/ContractDashboard'; // Add this import
+import ContractDashboard from './components/ContractDashboard';
+import AmendmentUpload from './components/AmendmentUpload';
 
 function App() {
   const [activeTab, setActiveTab] = useState(0);
@@ -21,19 +22,19 @@ function App() {
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
-    if (newValue === 0 || newValue === 1) {
+    if (newValue === 0 || newValue === 1 || newValue === 2) {
       setSelectedContractId(null);
     }
   };
 
   const handleUploadSuccess = () => {
     setRefreshList(!refreshList);
-    setActiveTab(2); // Changed to Contract List tab
+    setActiveTab(3); // Go to Contract List tab
   };
 
   const handleSelectContract = (contract) => {
     setSelectedContractId(contract.id);
-    setActiveTab(3); // Changed to Contract Details tab
+    setActiveTab(4); // Go to Contract Details tab
   };
 
   const handleReviewUpdate = () => {
@@ -55,7 +56,8 @@ function App() {
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
           <Tabs value={activeTab} onChange={handleTabChange}>
             <Tab label="Dashboard" />
-            <Tab label="Upload" />
+            <Tab label="Upload Contract" />
+            <Tab label="Upload Amendment" />
             <Tab label="Contract List" />
             <Tab label="Contract Details" disabled={!selectedContractId} />
           </Tabs>
@@ -63,13 +65,14 @@ function App() {
 
         {activeTab === 0 && <ContractDashboard />}
         {activeTab === 1 && <DocumentUpload onUploadSuccess={handleUploadSuccess} />}
-        {activeTab === 2 && (
+        {activeTab === 2 && <AmendmentUpload onUploadSuccess={handleUploadSuccess} />}
+        {activeTab === 3 && (
           <ContractList
             key={refreshList}
             onSelectContract={handleSelectContract}
           />
         )}
-        {activeTab === 3 && selectedContractId && (
+        {activeTab === 4 && selectedContractId && (
           <ContractDetail
             contractId={selectedContractId}
             onReviewUpdate={handleReviewUpdate}

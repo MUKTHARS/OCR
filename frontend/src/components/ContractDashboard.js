@@ -25,6 +25,10 @@ import {
   DialogActions,
   TextField,
   InputAdornment,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -43,8 +47,9 @@ import {
   Person,
   CalendarToday,
   AttachMoney,
+  Compare,
 } from '@mui/icons-material';
-import { getContractSummary, getContracts, searchContracts } from '../services/api';
+import { getContractSummary, getContracts, searchContracts, compareContracts } from '../services/api';
 
 const ContractDashboard = () => {
   const [summary, setSummary] = useState(null);
@@ -54,6 +59,10 @@ const ContractDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContract, setSelectedContract] = useState(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false);
+  const [selectedForCompare, setSelectedForCompare] = useState([]);
+  const [comparisonResult, setComparisonResult] = useState(null);
+  const [comparing, setComparing] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -100,7 +109,6 @@ const ContractDashboard = () => {
     try {
       const result = await searchContracts(searchQuery);
       if (result.results) {
-        // If search returns results with relevance_text, we need to fetch the actual contracts
         const contractIds = result.results.map(r => r.contract_id);
         const detailedContracts = await getContracts();
         const filtered = detailedContracts.filter(contract => 
@@ -118,6 +126,41 @@ const ContractDashboard = () => {
   const handleViewContract = (contract) => {
     setSelectedContract(contract);
     setDetailDialogOpen(true);
+  };
+
+  const handleCompareSelect = (contract) => {
+    if (selectedForCompare.some(c => c.id === contract.id)) {
+      // Remove from selection
+      setSelectedForCompare(selectedForCompare.filter(c => c.id !== contract.id));
+    } else if (selectedForCompare.length < 2) {
+      // Add to selection
+      setSelectedForCompare([...selectedForCompare, contract]);
+    }
+  };
+
+  const handleCompareContracts = async () => {
+    if (selectedForCompare.length !== 2) return;
+    
+    setComparing(true);
+    try {
+      const result = await compareContracts(
+        selectedForCompare[0].id, 
+        selectedForCompare[1].id
+      );
+      setComparisonResult(result);
+      setCompareDialogOpen(true);
+    } catch (error) {
+      console.error('Error comparing contracts:', error);
+      alert('Failed to compare contracts');
+    } finally {
+      setComparing(false);
+    }
+  };
+
+  const clearComparison = () => {
+    setSelectedForCompare([]);
+    setComparisonResult(null);
+    setCompareDialogOpen(false);
   };
 
   const getRiskColor = (score) => {
@@ -244,6 +287,32 @@ const ContractDashboard = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Comparison Selection Alert */}
+      {selectedForCompare.length > 0 && (
+        <Alert 
+          severity="info" 
+          sx={{ mb: 3 }}
+          action={
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button 
+                size="small" 
+                onClick={handleCompareContracts}
+                disabled={selectedForCompare.length !== 2 || comparing}
+                startIcon={<Compare />}
+              >
+                {comparing ? 'Comparing...' : 'Compare Selected'}
+              </Button>
+              <Button size="small" onClick={() => setSelectedForCompare([])}>
+                Clear
+              </Button>
+            </Box>
+          }
+        >
+          {selectedForCompare.length} contract(s) selected for comparison. 
+          {selectedForCompare.length === 1 ? ' Select one more to compare.' : ' Ready to compare.'}
+        </Alert>
+      )}
 
       {/* Search Bar */}
       <Box sx={{ mb: 3 }}>
@@ -385,14 +454,33 @@ const ContractDashboard = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Tooltip title="View Details">
-                          <IconButton 
-                            size="small"
-                            onClick={() => handleViewContract(contract)}
-                          >
-                            <Visibility fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Tooltip title="View Details">
+                            <IconButton 
+                              size="small"
+                              onClick={() => handleViewContract(contract)}
+                            >
+                              <Visibility fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title={
+                            selectedForCompare.some(c => c.id === contract.id) 
+                              ? "Selected for comparison" 
+                              : "Compare with another contract"
+                          }>
+                            <IconButton 
+                              size="small"
+                              onClick={() => handleCompareSelect(contract)}
+                              color={
+                                selectedForCompare.some(c => c.id === contract.id) 
+                                  ? "primary" 
+                                  : "default"
+                              }
+                            >
+                              <Compare fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -646,6 +734,166 @@ const ContractDashboard = () => {
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      {/* Comparison Dialog */}
+      <Dialog
+        open={compareDialogOpen}
+        onClose={clearComparison}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Compare />
+            <Typography>Contract Comparison</Typography>
+          </Box>
+          {comparisonResult && (
+            <Typography variant="body2" color="text.secondary">
+              Comparing: {comparisonResult.contract1.contract_type} (v{comparisonResult.contract1.version}) 
+              vs {comparisonResult.contract2.contract_type} (v{comparisonResult.contract2.version})
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {comparing ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <LinearProgress sx={{ mb: 2 }} />
+              <Typography>Analyzing contract differences...</Typography>
+            </Box>
+          ) : comparisonResult ? (
+            <Box sx={{ mt: 2 }}>
+              {/* Summary Card */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>Comparison Summary</Typography>
+                  <Typography variant="body1">
+                    {comparisonResult.summary}
+                  </Typography>
+                </CardContent>
+              </Card>
+
+              {/* Suggested Actions */}
+              {comparisonResult.suggested_actions && comparisonResult.suggested_actions.length > 0 && (
+                <Card sx={{ mb: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Suggested Actions</Typography>
+                    <List>
+                      {comparisonResult.suggested_actions.map((action, idx) => (
+                        <ListItem key={idx}>
+                          <ListItemIcon>
+                            <Warning color="warning" />
+                          </ListItemIcon>
+                          <ListItemText primary={action} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Detailed Changes */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>Detailed Changes</Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Field</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Old Value</TableCell>
+                          <TableCell>New Value</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {comparisonResult.comparison.deltas?.map((delta, idx) => (
+                          <TableRow key={idx} hover>
+                            <TableCell>
+                              <Typography variant="body2">
+                                {delta.field_name}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={delta.change_type}
+                                size="small"
+                                color={
+                                  delta.change_type === 'added' ? 'success' : 
+                                  delta.change_type === 'removed' ? 'error' : 'warning'
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {delta.old_value ? 
+                                  (typeof delta.old_value === 'object' ? 
+                                    JSON.stringify(delta.old_value).slice(0, 100) : 
+                                    String(delta.old_value).slice(0, 100)) : 
+                                  '—'
+                                }
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {delta.new_value ? 
+                                  (typeof delta.new_value === 'object' ? 
+                                    JSON.stringify(delta.new_value).slice(0, 100) : 
+                                    String(delta.new_value).slice(0, 100)) : 
+                                  '—'
+                                }
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Box>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={clearComparison}>Close</Button>
+          {comparisonResult && (
+            <Button 
+              variant="contained" 
+              onClick={() => {
+                // Export functionality
+                const comparisonText = `
+                  Contract Comparison Report
+                  ==========================
+                  
+                  Contract 1: ${comparisonResult.contract1.contract_type} (v${comparisonResult.contract1.version})
+                  Contract 2: ${comparisonResult.contract2.contract_type} (v${comparisonResult.contract2.version})
+                  
+                  Summary: ${comparisonResult.summary}
+                  
+                  Suggested Actions:
+                  ${comparisonResult.suggested_actions.map(action => `• ${action}`).join('\n')}
+                  
+                  Detailed Changes:
+                  ${comparisonResult.comparison.deltas?.map(delta => 
+                    `${delta.field_name} (${delta.change_type}): ${delta.old_value || 'N/A'} → ${delta.new_value || 'N/A'}`
+                  ).join('\n')}
+                `;
+                
+                const blob = new Blob([comparisonText], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `contract-comparison-${comparisonResult.contract1.id}-${comparisonResult.contract2.id}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Export Comparison
+            </Button>
+          )}
+        </DialogActions>
       </Dialog>
     </Box>
   );

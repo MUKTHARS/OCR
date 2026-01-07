@@ -106,3 +106,11 @@ export const uploadDocumentWithMetadata = async (file, metadata) => {
   });
   return response.data;
 };
+
+export const compareContracts = async (contractId1, contractId2) => {
+  const response = await api.post('/contracts/compare', {
+    contract_id_1: contractId1,
+    contract_id_2: contractId2
+  });
+  return response.data;
+};
