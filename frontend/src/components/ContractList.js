@@ -100,73 +100,109 @@ const ContractList = ({ onSelectContract }) => {
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center">
-                  Loading...
-                </TableCell>
-              </TableRow>
-            ) : contracts.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center">
-                  No contracts found
-                </TableCell>
-              </TableRow>
-            ) : (
-              contracts.map((contract) => (
-                <TableRow key={contract.id} hover>
-                  <TableCell>
-                    <Typography fontWeight="medium">
-                      {contract.contract_type}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                      {contract.parties?.slice(0, 2).map((party, idx) => (
-                        <Typography key={idx} variant="body2">
-                          {party}
-                        </Typography>
-                      ))}
-                      {contract.parties?.length > 2 && (
-                        <Typography variant="caption" color="text.secondary">
-                          +{contract.parties.length - 2} more
-                        </Typography>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>{formatDate(contract.effective_date)}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={`${Math.round(contract.confidence_score * 100)}%`}
-                      color={getConfidenceColor(contract.confidence_score)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {contract.needs_review ? (
-                      <Chip label="Needs Review" color="warning" size="small" />
-                    ) : (
-                      <Chip
-                        icon={<CheckCircleIcon />}
-                        label="Reviewed"
-                        color="success"
-                        size="small"
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <IconButton
-                      size="small"
-                      onClick={() => onSelectContract && onSelectContract(contract)}
-                    >
-                      <VisibilityIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
+         <TableBody>
+  {loading ? (
+    <TableRow>
+      <TableCell colSpan={8} align="center">
+        Loading...
+      </TableCell>
+    </TableRow>
+  ) : contracts.length === 0 ? (
+    <TableRow>
+      <TableCell colSpan={8} align="center">
+        No contracts found
+      </TableCell>
+    </TableRow>
+  ) : (
+    contracts.map((contract) => (
+      <TableRow key={contract.id} hover>
+        <TableCell>
+          <Typography fontWeight="medium">
+            {contract.contract_type}
+          </Typography>
+          {contract.contract_subtype && (
+            <Typography variant="caption" color="text.secondary" display="block">
+              {contract.contract_subtype}
+            </Typography>
+          )}
+        </TableCell>
+        <TableCell>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {contract.parties?.slice(0, 2).map((party, idx) => (
+              <Typography key={idx} variant="body2">
+                {party}
+              </Typography>
+            ))}
+            {contract.parties?.length > 2 && (
+              <Typography variant="caption" color="text.secondary">
+                +{contract.parties.length - 2} more
+              </Typography>
             )}
-          </TableBody>
+          </Box>
+        </TableCell>
+        <TableCell>
+          {contract.total_value ? (
+            <Typography variant="body2" fontWeight="medium">
+              {contract.currency || 'USD'} {contract.total_value.toLocaleString()}
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              N/A
+            </Typography>
+          )}
+        </TableCell>
+        <TableCell>
+          {contract.signatories && contract.signatories.length > 0 ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {contract.signatories.slice(0, 2).map((sig, idx) => (
+                <Typography key={idx} variant="body2">
+                  {sig.name}
+                </Typography>
+              ))}
+              {contract.signatories.length > 2 && (
+                <Typography variant="caption" color="text.secondary">
+                  +{contract.signatories.length - 2} more
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              No signatories
+            </Typography>
+          )}
+        </TableCell>
+        <TableCell>{formatDate(contract.effective_date)}</TableCell>
+        <TableCell>
+          <Chip
+            label={`${Math.round(contract.confidence_score * 100)}%`}
+            color={getConfidenceColor(contract.confidence_score)}
+            size="small"
+          />
+        </TableCell>
+        <TableCell>
+          {contract.needs_review ? (
+            <Chip label="Needs Review" color="warning" size="small" />
+          ) : (
+            <Chip
+              icon={<CheckCircleIcon />}
+              label="Reviewed"
+              color="success"
+              size="small"
+            />
+          )}
+        </TableCell>
+        <TableCell>
+          <IconButton
+            size="small"
+            onClick={() => onSelectContract && onSelectContract(contract)}
+          >
+            <VisibilityIcon />
+          </IconButton>
+        </TableCell>
+      </TableRow>
+    ))
+  )}
+</TableBody>
         </Table>
       </TableContainer>
     </Box>

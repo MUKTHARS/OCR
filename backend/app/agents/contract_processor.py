@@ -12,102 +12,207 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class ContractProcessor:
     def __init__(self):
-        self.system_prompt = """You are an Enterprise Contract Intelligence Agent. Extract ALL structured information from contracts.
-        Return ONLY valid JSON with this EXACT structure:
+        # Update the system prompt in ContractProcessor.__init__():
+
+        self.system_prompt = """You are an Enterprise Contract Intelligence Agent. Extract ALL information from contracts.
+
+        IMPORTANT EXTRACTIONS:
+        1. Extract signatories with names, titles, and signatures
+        2. Extract ALL parties with full legal names
+        3. For each contract, ensure you extract:
+           - All signatories (names, titles, signature dates)
+           - Total contract value with currency
+           - All parties involved
+           - Contract type and subtype
+           - Effective and expiration dates
+
+        INSTRUCTIONS:
+        1. Extract EVERY section, clause, term, and detail you find in the contract
+        2. If something doesn't fit predefined categories, create new categories
+        3. For tables (like payment schedules, deliverables, milestones), extract ALL data
+        4. For dates, convert to YYYY-MM-DD format
+        5. For monetary values, extract both amount and currency
+        6. For parties, extract FULL legal names
+        7. Preserve the original wording and structure when possible
+
+        Return ONLY valid JSON with this structure:
         {
-            "contract_type": "type of contract (e.g., 'NDA', 'Service Agreement', 'Master Agreement')",
+            "contract_type": "type of contract",
             "contract_subtype": "subtype if applicable",
-            "master_agreement_id": "reference number if exists",
-            "parties": ["full legal name of party1", "full legal name of party2"],
+            "master_agreement_id": "reference number",
+            "parties": ["Party 1 Full Legal Name", "Party 2 Full Legal Name"],
+            
             "dates": {
-                "effective_date": "YYYY-MM-DD or null",
-                "expiration_date": "YYYY-MM-DD or null",
-                "execution_date": "YYYY-MM-DD or null",
-                "termination_date": "YYYY-MM-DD or null"
+                "effective_date": "YYYY-MM-DD",
+                "expiration_date": "YYYY-MM-DD",
+                "execution_date": "YYYY-MM-DD",
+                "termination_date": "YYYY-MM-DD",
+                "renewal_date": "YYYY-MM-DD",
+                "notice_period_days": 30,
+                "other_dates": {
+                    "date_description": "YYYY-MM-DD"
+                }
             },
+            
             "financial": {
-                "total_value": number or null,
-                "currency": "ISO code",
-                "payment_terms": "terms description",
-                "billing_frequency": "frequency description"
+                "total_value": 100000,
+                "currency": "USD",
+                "payment_terms": "Net 30",
+                "billing_frequency": "Monthly",
+                "late_payment_fee": "1.5% per month",
+                "advance_payment": 0.3,
+                "retention_amount": 0.1,
+                "other_financial_terms": {}
             },
-            "signatories": [
+            
+            "payment_schedule": [
                 {
-                    "name": "full name",
-                    "title": "job title",
-                    "email": "email if available"
+                    "milestone": "Upon Signing",
+                    "percentage": 30,
+                    "amount": 30000,
+                    "due_date": "YYYY-MM-DD",
+                    "conditions": "None"
                 }
             ],
-            "contacts": [
-                {
-                    "type": "legal/technical/billing",
-                    "name": "contact name",
-                    "email": "email if available",
-                    "phone": "phone if available"
-                }
-            ],
-            "legal_terms": {
-                "auto_renewal": boolean,
-                "renewal_notice_period": number_in_days,
-                "termination_notice_period": number_in_days,
-                "governing_law": "jurisdiction",
-                "jurisdiction": "specific jurisdiction",
-                "confidentiality": boolean,
-                "indemnification": boolean,
-                "liability_cap": "cap amount and currency",
-                "insurance_requirements": "requirements description"
-            },
-            "service_levels": {
-                "kpi_name": {
-                    "target": "target value",
-                    "measurement_period": "period description",
-                    "remedies": "remedy description"
-                }
-            },
+            
             "deliverables": [
                 {
-                    "item": "deliverable name",
-                    "due_date": "YYYY-MM-DD or null",
-                    "milestone": "milestone description"
+                    "item": "Software Implementation",
+                    "due_date": "YYYY-MM-DD",
+                    "milestone": "Phase 1",
+                    "acceptance_criteria": "Client sign-off",
+                    "status": "Pending"
                 }
             ],
-            "risk_factors": [
-                {
-                    "factor": "risk description",
-                    "severity": "low/medium/high/critical",
-                    "mitigation": "mitigation strategy"
+            
+            "service_levels": {
+                "uptime": {
+                    "target": "99.9%",
+                    "measurement_period": "Monthly",
+                    "remedies": "Service credit"
                 }
-            ],
+            },
+            
             "clauses": {
-                "clause_name": {
-                    "text": "full extracted text",
-                    "category": "category",
-                    "confidence": 0.95,
-                    "risk_level": "low/medium/high"
+                "confidentiality": {
+                    "text": "Full clause text here...",
+                    "duration_years": 5,
+                    "exceptions": "Public information",
+                    "category": "Legal"
+                },
+                "indemnification": {
+                    "text": "Full clause text here...",
+                    "scope": "Third-party claims",
+                    "limitations": "Direct damages only",
+                    "category": "Risk"
+                },
+                "termination": {
+                    "text": "Full clause text here...",
+                    "notice_period": 30,
+                    "causes": ["Breach", "Insolvency"],
+                    "category": "Administrative"
                 }
             },
+            
+            "tables_and_schedules": {
+                "payment_schedule": "Full table text or structured data",
+                "deliverables_schedule": "Full table text or structured data",
+                "personnel_assignment": "Full table text or structured data"
+            },
+            
             "key_fields": {
-                "field_name": {
-                    "value": "extracted value",
-                    "data_type": "string/number/date/boolean",
+                "contract_value": {
+                    "value": "100,000 USD",
+                    "data_type": "currency",
                     "confidence": 0.95,
-                    "source_page": page_number
+                    "source_section": "Financial Terms"
+                },
+                "governing_law": {
+                    "value": "State of Delaware",
+                    "data_type": "text",
+                    "confidence": 0.98,
+                    "source_section": "Legal Provisions"
                 }
             },
-            "metadata": {
-                "page_count": number,
-                "language": "detected language",
-                "has_signatures": boolean,
-                "has_schedules": boolean,
-                "document_completeness": 0.95
+            
+            "risk_indicators": {
+                "auto_renewal": true,
+                "unlimited_liability": false,
+                "penalty_clauses": true,
+                "confidentiality_period_years": 5,
+                "termination_for_convenience": true
             },
-            "confidence_score": 0.95
+            
+            "compliance_requirements": {
+                "insurance_required": true,
+                "minimum_coverage": "1,000,000 USD",
+                "audit_rights": true,
+                "audit_frequency": "Annually",
+                "reporting_requirements": ["Monthly", "Quarterly", "Annually"]
+            },
+            
+            "contact_information": {
+                "signatories": [
+                    {
+                        "name": "John Doe",
+                        "title": "CEO",
+                        "email": "john@company.com",
+                        "signature_date": "YYYY-MM-DD"
+                    }
+                ],
+                "administrative_contacts": [
+                    {
+                        "type": "Billing",
+                        "name": "Jane Smith",
+                        "email": "billing@company.com",
+                        "phone": "+1-234-567-8900"
+                    }
+                ]
+            },
+            
+            "attachments_and_exhibits": [
+                {
+                    "name": "Exhibit A - Scope of Work",
+                    "reference": "Attached",
+                    "description": "Detailed project scope"
+                }
+            ],
+            
+            "miscellaneous": {
+                "document_version": "2.1",
+                "number_of_pages": 25,
+                "language": "English",
+                "has_amendments": false,
+                "amendment_history": []
+            },
+            
+            "extracted_sections": {
+                "section_name": {
+                    "text": "Full section text",
+                    "page_number": 5,
+                    "category": "category",
+                    "importance": "high/medium/low"
+                }
+            },
+            
+            "metadata": {
+                "extraction_completeness": 0.95,
+                "unstructured_content_preserved": true,
+                "tables_extracted": 2,
+                "sections_identified": 15
+            },
+            
+            "confidence_score": 0.95,
+            "risk_score": 0.3
         }
-        
-        IMPORTANT: Extract EVERY detail you find. If something is mentioned multiple times, take the most specific/clear instance.
-        For dates, always format as YYYY-MM-DD.
-        For financial amounts, extract both number and currency.
-        For parties, extract FULL legal names, not abbreviations."""
+
+        IMPORTANT: 
+        - Extract ALL tables, schedules, and attachments
+        - If you see "REPORTING & PAYMENT SCHEDULE", extract it completely
+        - For payment schedules, extract all rows with amounts, dates, and conditions
+        - For reporting requirements, extract frequency, format, and recipients
+        - Preserve original wording for complex clauses
+        - Don't omit any information - include everything you find"""
     
     def extract_text_from_pdf(self, file_content: bytes) -> str:
         """Extract text from PDF file - FIXED VERSION"""
@@ -141,44 +246,44 @@ class ContractProcessor:
         text_lower = text.lower()
         return any(keyword in text_lower for keyword in signature_keywords)
     
-    def process_contract(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Process contract text using OpenAI with enhanced extraction"""
-        try:
-            # Prepare enhanced context
-            context = f"""
-            Document Metadata:
-            - Pages: {metadata.get('page_count', 'Unknown') if metadata else 'Unknown'}
-            - Extraction Quality: {'High' if len(text) > 1000 else 'Low'}
+    # def process_contract(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    #     """Process contract text using OpenAI with enhanced extraction"""
+    #     try:
+    #         # Prepare enhanced context
+    #         context = f"""
+    #         Document Metadata:
+    #         - Pages: {metadata.get('page_count', 'Unknown') if metadata else 'Unknown'}
+    #         - Extraction Quality: {'High' if len(text) > 1000 else 'Low'}
             
-            Contract Text:
-            {text[:20000]}  # Increased limit for detailed extraction
-            """
+    #         Contract Text:
+    #         {text[:20000]}  # Increased limit for detailed extraction
+    #         """
             
-            response = client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": context}
-                ],
-                temperature=0.1,
-                max_tokens=4000,
-                response_format={"type": "json_object"}
-            )
+    #         response = client.chat.completions.create(
+    #             model="gpt-4-turbo-preview",
+    #             messages=[
+    #                 {"role": "system", "content": self.system_prompt},
+    #                 {"role": "user", "content": context}
+    #             ],
+    #             temperature=0.1,
+    #             max_tokens=4000,
+    #             response_format={"type": "json_object"}
+    #         )
             
-            result = json.loads(response.choices[0].message.content)
+    #         result = json.loads(response.choices[0].message.content)
             
-            # Calculate risk score based on extracted factors
-            result["risk_score"] = self._calculate_risk_score(result)
+    #         # Calculate risk score based on extracted factors
+    #         result["risk_score"] = self._calculate_risk_score(result)
             
-            # Add metadata
-            if metadata:
-                result["metadata"] = {**result.get("metadata", {}), **metadata}
+    #         # Add metadata
+    #         if metadata:
+    #             result["metadata"] = {**result.get("metadata", {}), **metadata}
             
-            return result
+    #         return result
             
-        except Exception as e:
-            print(f"Error processing contract: {e}")
-            return self._get_fallback_extraction()
+    #     except Exception as e:
+    #         print(f"Error processing contract: {e}")
+    #         return self._get_fallback_extraction()
     
     def _calculate_risk_score(self, extraction: Dict[str, Any]) -> float:
         """Calculate risk score based on extracted factors"""
@@ -194,16 +299,29 @@ class ContractProcessor:
         # Check dates
         dates = extraction.get("dates", {})
         if dates.get("expiration_date"):
-            exp_date = datetime.fromisoformat(dates["expiration_date"].replace('Z', '+00:00'))
-            days_remaining = (exp_date - datetime.now()).days
-            if days_remaining < 90:  # Expiring soon
-                risk_score += 0.2
-            if days_remaining < 30:  # Expiring very soon
-                risk_score += 0.3
+            try:
+                exp_date = datetime.fromisoformat(dates["expiration_date"].replace('Z', '+00:00'))
+                days_remaining = (exp_date - datetime.now()).days
+                if days_remaining < 90:  # Expiring soon
+                    risk_score += 0.2
+                if days_remaining < 30:  # Expiring very soon
+                    risk_score += 0.3
+            except Exception as e:
+                print(f"Error parsing expiration date: {e}")
         
-        # Check financial terms
+        # Check financial terms - FIXED: Handle string values
         financial = extraction.get("financial", {})
-        if financial.get("total_value", 0) > 1000000:  # High value contract
+        total_value = financial.get("total_value", 0)
+        
+        # Convert to float if it's a string
+        if isinstance(total_value, str):
+            try:
+                # Remove commas and non-numeric characters
+                total_value = float(''.join(filter(str.isdigit, total_value)))
+            except:
+                total_value = 0
+        
+        if total_value > 1000000:  # High value contract
             risk_score += 0.15
         
         # Normalize to 0-1
@@ -292,3 +410,257 @@ class ContractProcessor:
             "summary": f"Found {len(deltas)} changes between versions",
             "confidence_change": new_extraction.get("confidence_score", 0) - old_extraction.get("confidence_score", 0)
         }
+
+    def extract_tables_from_text(self, text: str) -> Dict[str, Any]:
+        """Extract table-like structures from text"""
+        tables = {}
+        
+        # Common table patterns in contracts
+        table_patterns = [
+            r"(PAYMENT\s+SCHEDULE[\s\S]*?)(?=\n\n|\n[A-Z]|$)",
+            r"(REPORTING\s+REQUIREMENTS[\s\S]*?)(?=\n\n|\n[A-Z]|$)",
+            r"(DELIVERABLES[\s\S]*?)(?=\n\n|\n[A-Z]|$)",
+            r"(MILESTONES[\s\S]*?)(?=\n\n|\n[A-Z]|$)",
+            r"(SCHEDULE\s+[A-Z][\s\S]*?)(?=\n\n|\n[A-Z]|$)",
+            r"(EXHIBIT\s+[A-Z][\s\S]*?)(?=\n\n|\n[A-Z]|$)"
+        ]
+        
+        for pattern in table_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                table_name = match.group(1).split('\n')[0].strip()
+                table_content = match.group(1)
+                tables[table_name] = table_content
+        
+        return tables
+
+    def process_contract(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Process contract text with enhanced table extraction and chunking for large documents"""
+        try:
+            # Extract tables before sending to OpenAI
+            extracted_tables = self.extract_tables_from_text(text)
+            
+            # Calculate approximate token count (rough estimate: 1 token ≈ 4 characters)
+            approx_tokens = len(text) / 4
+            
+            # If text is too large, split into chunks
+            if approx_tokens > 3000:  # Conservative threshold for GPT-4
+                print(f"Document too large ({approx_tokens:.0f} estimated tokens), processing in chunks")
+                
+                # Split text into chunks of ~2000 tokens each (8000 characters)
+                chunk_size = 8000
+                chunks = []
+                start = 0
+                
+                while start < len(text):
+                    end = start + chunk_size
+                    # Try to break at a paragraph or sentence boundary
+                    if end < len(text):
+                        # Look for paragraph break first
+                        paragraph_break = text.rfind('\n\n', start, end)
+                        if paragraph_break != -1 and paragraph_break > start:
+                            end = paragraph_break
+                        else:
+                            # Look for sentence break
+                            sentence_break = max(text.rfind('. ', start, end),
+                                                text.rfind('? ', start, end),
+                                                text.rfind('! ', start, end))
+                            if sentence_break != -1 and sentence_break > start:
+                                end = sentence_break + 1
+                    
+                    chunk = text[start:end].strip()
+                    if chunk:
+                        chunks.append(chunk)
+                    start = end
+                
+                print(f"Split document into {len(chunks)} chunks")
+                
+                # Process each chunk and combine results
+                all_extracted_data = []
+                for i, chunk in enumerate(chunks):
+                    print(f"Processing chunk {i+1}/{len(chunks)}")
+                    
+                    chunk_prompt = f"""Analyze this portion of a contract document (chunk {i+1} of {len(chunks)}).
+                    Focus on extracting contractual elements from this specific section.
+                    
+                    Important tables found in full document: {list(extracted_tables.keys())}
+                    
+                    Document text: {chunk[:6000]}"""
+                    
+                    try:
+                        response = client.chat.completions.create(
+                            model="gpt-4-turbo-preview",
+                            messages=[
+                                {"role": "system", "content": self.system_prompt},
+                                {"role": "user", "content": chunk_prompt}
+                            ],
+                            temperature=0.1,
+                            max_tokens=2000,  # Conservative for chunks
+                            response_format={"type": "json_object"}
+                        )
+                        
+                        extracted = json.loads(response.choices[0].message.content)
+                        all_extracted_data.append(extracted)
+                        
+                    except Exception as e:
+                        print(f"Error processing chunk {i+1}: {str(e)}")
+                        continue
+                
+                # Combine all extracted data intelligently
+                combined_result = self._merge_chunk_extractions(all_extracted_data)
+                
+                # Add extracted tables to result
+                if extracted_tables:
+                    combined_result["tables_and_schedules"] = extracted_tables
+                
+                # Calculate risk score
+                combined_result["risk_score"] = self._calculate_risk_score(combined_result)
+                
+                # Add metadata
+                if metadata:
+                    combined_result["metadata"] = {
+                        **combined_result.get("metadata", {}),
+                        **metadata,
+                        "processing_method": "chunked",
+                        "number_of_chunks": len(chunks)
+                    }
+                
+                return combined_result
+                
+            else:
+                # Original logic for smaller documents
+                context = f"""
+                Important: This contract contains tables and schedules. Extract ALL information including:
+                
+                Found Tables:
+                {json.dumps(list(extracted_tables.keys()), indent=2)}
+                
+                Contract Text:
+                {text[:18000]}  # Leave room for response
+                """
+                
+                response = client.chat.completions.create(
+                    model="gpt-4-turbo-preview",
+                    messages=[
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": context}
+                    ],
+                    temperature=0.1,
+                    max_tokens=6000,  # Increased for detailed extraction
+                    response_format={"type": "json_object"}
+                )
+                
+                result = json.loads(response.choices[0].message.content)
+                
+                # Add extracted tables to result
+                if extracted_tables:
+                    result["tables_and_schedules"] = extracted_tables
+                
+                # Calculate risk score
+                result["risk_score"] = self._calculate_risk_score(result)
+                
+                # Add metadata
+                if metadata:
+                    result["metadata"] = {**result.get("metadata", {}), **metadata}
+                
+                return result
+                
+        except Exception as e:
+            print(f"Error processing contract: {e}")
+            return self._get_fallback_extraction()
+
+    def _merge_chunk_extractions(self, chunk_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Merge multiple chunk extractions into a single comprehensive result"""
+        if not chunk_results:
+            return self._get_fallback_extraction()
+        
+        # Start with first chunk as base
+        merged = chunk_results[0].copy()
+        
+        # Merge parties (unique)
+        all_parties = set()
+        for chunk in chunk_results:
+            if "parties" in chunk and isinstance(chunk["parties"], list):
+                all_parties.update(chunk["parties"])
+        merged["parties"] = list(all_parties)
+        
+        # Merge dates (keep most specific)
+        for chunk in chunk_results[1:]:
+            if "dates" in chunk and isinstance(chunk["dates"], dict):
+                for date_type, date_value in chunk["dates"].items():
+                    if date_value and date_value != "Unknown":
+                        if date_type not in merged["dates"] or merged["dates"][date_type] == "Unknown":
+                            merged["dates"][date_type] = date_value
+        
+        # Merge financial data - FIXED: Handle string values properly
+        for chunk in chunk_results[1:]:
+            if "financial" in chunk and isinstance(chunk["financial"], dict):
+                for financial_key, financial_value in chunk["financial"].items():
+                    if financial_value:
+                        # Skip comparison for non-numeric fields
+                        if financial_key in ["currency", "payment_terms", "billing_frequency", "late_payment_fee", "advance_payment", "retention_amount"]:
+                            if financial_key not in merged["financial"]:
+                                merged["financial"][financial_key] = financial_value
+                        else:
+                            # For numeric fields (total_value), handle string to number conversion
+                            if financial_key == "total_value":
+                                try:
+                                    # Convert current value to float if it exists
+                                    current_val = merged["financial"].get(financial_key, 0)
+                                    if isinstance(current_val, str):
+                                        try:
+                                            # Remove non-numeric characters and convert
+                                            current_val_clean = ''.join(c for c in str(current_val) if c.isdigit() or c == '.')
+                                            current_val = float(current_val_clean) if current_val_clean else 0
+                                        except:
+                                            current_val = 0
+                                    
+                                    # Convert new value to float
+                                    new_val = financial_value
+                                    if isinstance(new_val, str):
+                                        try:
+                                            # Remove non-numeric characters and convert
+                                            new_val_clean = ''.join(c for c in str(new_val) if c.isdigit() or c == '.')
+                                            new_val = float(new_val_clean) if new_val_clean else 0
+                                        except:
+                                            new_val = 0
+                                    
+                                    # Only update if new value is larger and valid
+                                    if financial_key not in merged["financial"] or new_val > current_val:
+                                        merged["financial"][financial_key] = financial_value  # Keep original value
+                                except Exception as e:
+                                    print(f"Error comparing financial value for {financial_key}: {e}")
+                                    continue
+                            else:
+                                # For other financial fields, just take the first non-empty value
+                                if financial_key not in merged["financial"]:
+                                    merged["financial"][financial_key] = financial_value
+        
+        # Merge clauses
+        all_clauses = {}
+        for chunk in chunk_results:
+            if "clauses" in chunk and isinstance(chunk["clauses"], dict):
+                for clause_name, clause_data in chunk["clauses"].items():
+                    if clause_name not in all_clauses or len(str(clause_data)) > len(str(all_clauses[clause_name])):
+                        all_clauses[clause_name] = clause_data
+        merged["clauses"] = all_clauses
+        
+        # Merge deliverables
+        all_deliverables = []
+        for chunk in chunk_results:
+            if "deliverables" in chunk and isinstance(chunk["deliverables"], list):
+                for deliverable in chunk["deliverables"]:
+                    if deliverable not in all_deliverables:
+                        all_deliverables.append(deliverable)
+        merged["deliverables"] = all_deliverables
+        
+        # Update metadata
+        merged["metadata"] = {
+            "extraction_completeness": 0.95,
+            "unstructured_content_preserved": True,
+            "tables_extracted": len(merged.get("tables_and_schedules", {})),
+            "sections_identified": len(all_clauses) + len(all_deliverables),
+            "processing_method": "chunked_merge"
+        }
+        
+        return merged

@@ -291,9 +291,8 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
             
             # Extract text with metadata
             print(f"Extracting text from PDF for document {document_id}")
-            extraction_result = processor.extract_text_from_pdf(file_content)
-            text = extraction_result["text"]
-            pdf_metadata = extraction_result["metadata"]
+            text = processor.extract_text_from_pdf(file_content)
+            pdf_metadata = {"page_count": "Unknown", "extraction_method": "PyPDF2"}
             
             if not text or len(text.strip()) < 50:
                 print(f"No substantial text extracted from document {document_id}")
@@ -347,6 +346,86 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                             )
                             local_db.add(contract_delta)
             
+            # Fix the signatories extraction
+            signatories_list = []
+            
+            # Try different possible locations for signatories
+            if extraction.get("contact_information") and extraction["contact_information"].get("signatories"):
+                signatories_list = extraction["contact_information"]["signatories"]
+            elif extraction.get("signatories"):
+                signatories_list = extraction["signatories"]
+            
+            # Fix the contacts extraction
+            contacts_list = []
+            
+            if extraction.get("contact_information") and extraction["contact_information"].get("administrative_contacts"):
+                contacts_list = extraction["contact_information"]["administrative_contacts"]
+            elif extraction.get("contacts"):
+                contacts_list = extraction["contacts"]
+            
+            # Helper function to extract risk factors
+            def extract_risk_factors(extraction_data):
+                """Extract risk factors from the extraction result"""
+                risk_factors = []
+                
+                # Check for high risk indicators
+                risk_indicators = extraction_data.get("risk_indicators", {})
+                
+                if risk_indicators.get("auto_renewal"):
+                    risk_factors.append({
+                        "factor": "Auto Renewal",
+                        "severity": "medium",
+                        "mitigation": "Set calendar reminder before renewal period",
+                        "confidence": 0.9
+                    })
+                
+                if risk_indicators.get("unlimited_liability"):
+                    risk_factors.append({
+                        "factor": "Unlimited Liability",
+                        "severity": "high",
+                        "mitigation": "Negotiate liability cap",
+                        "confidence": 0.8
+                    })
+                
+                if risk_indicators.get("penalty_clauses"):
+                    risk_factors.append({
+                        "factor": "Penalty Clauses",
+                        "severity": "medium",
+                        "mitigation": "Review penalty terms",
+                        "confidence": 0.7
+                    })
+                
+                # Add risk based on contract value
+                financial = extraction_data.get("financial", {})
+                if financial.get("total_value", 0) > 1000000:
+                    risk_factors.append({
+                        "factor": "High Contract Value",
+                        "severity": "high" if financial.get("total_value", 0) > 5000000 else "medium",
+                        "mitigation": "Additional review required",
+                        "confidence": 1.0
+                    })
+                
+                # Add risk based on expiration
+                dates = extraction_data.get("dates", {})
+                if dates.get("expiration_date"):
+                    try:
+                        exp_date = datetime.fromisoformat(dates["expiration_date"].replace('Z', '+00:00'))
+                        days_remaining = (exp_date - datetime.now()).days
+                        if days_remaining < 90:
+                            risk_factors.append({
+                                "factor": "Contract Expiring Soon",
+                                "severity": "high" if days_remaining < 30 else "medium",
+                                "mitigation": "Initiate renewal process",
+                                "confidence": 1.0
+                            })
+                    except:
+                        pass
+                
+                return risk_factors
+            
+            # Get risk factors
+            risk_factors_list = extract_risk_factors(extraction)
+            
             # Save contract with all extracted fields
             contract = models.Contract(
                 document_id=document_id,
@@ -362,21 +441,21 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                 currency=extraction.get("financial", {}).get("currency"),
                 payment_terms=extraction.get("financial", {}).get("payment_terms"),
                 billing_frequency=extraction.get("financial", {}).get("billing_frequency"),
-                signatories=extraction.get("signatories", []),
-                contacts=extraction.get("contacts", []),
-                auto_renewal=extraction.get("legal_terms", {}).get("auto_renewal"),
-                renewal_notice_period=extraction.get("legal_terms", {}).get("renewal_notice_period"),
-                termination_notice_period=extraction.get("legal_terms", {}).get("termination_notice_period"),
-                governing_law=extraction.get("legal_terms", {}).get("governing_law"),
-                jurisdiction=extraction.get("legal_terms", {}).get("jurisdiction"),
-                confidentiality=extraction.get("legal_terms", {}).get("confidentiality"),
-                indemnification=extraction.get("legal_terms", {}).get("indemnification"),
-                liability_cap=extraction.get("legal_terms", {}).get("liability_cap"),
-                insurance_requirements=extraction.get("legal_terms", {}).get("insurance_requirements"),
+                signatories=signatories_list,
+                contacts=contacts_list,
+                auto_renewal=extraction.get("risk_indicators", {}).get("auto_renewal"),
+                renewal_notice_period=extraction.get("dates", {}).get("notice_period_days"),
+                termination_notice_period=extraction.get("dates", {}).get("notice_period_days"),
+                governing_law=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+                jurisdiction=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+                confidentiality=extraction.get("clauses", {}).get("confidentiality") is not None,
+                indemnification=extraction.get("clauses", {}).get("indemnification") is not None,
+                liability_cap=extraction.get("key_fields", {}).get("liability_cap", {}).get("value") if extraction.get("key_fields", {}).get("liability_cap") else None,
+                insurance_requirements=extraction.get("compliance_requirements", {}).get("minimum_coverage"),
                 service_levels=extraction.get("service_levels", {}),
                 deliverables=extraction.get("deliverables", []),
                 risk_score=extraction.get("risk_score", 0.0),
-                risk_factors=extraction.get("risk_factors", []),
+                risk_factors=risk_factors_list,
                 clauses=extraction.get("clauses", {}),
                 key_fields=extraction.get("key_fields", {}),
                 extracted_metadata=extraction.get("metadata", {}),  # Changed from 'metadata' to 'extracted_metadata'
@@ -483,10 +562,8 @@ async def upload_document(
         print(f"Document saved with ID: {db_document.id}")
         
         # Extract text synchronously for validation
-        extraction_result = processor.extract_text_from_pdf(contents)
-        # text = extraction_result["text"]
         text = processor.extract_text_from_pdf(contents)
-        
+
         if not text or len(text.strip()) < 50:
             db_document.status = "failed: Could not extract text"
             db.commit()
@@ -516,69 +593,6 @@ async def upload_document(
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/upload", response_model=schemas.DocumentResponse)
-async def upload_document(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
-    """Upload a contract document"""
-    print(f"Backend: Received upload request for file: {file.filename}")
-    try:
-        # Read file
-        contents = await file.read()
-        print(f"Backend: File size: {len(contents)} bytes")
-        
-        # Validate file type
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(status_code=400, detail="Only PDF files are supported")
-        
-        # Save document record
-        db_document = models.Document(
-            filename=file.filename,
-            file_type=file.content_type,
-            file_size=len(contents),
-            status="uploaded"
-        )
-        db.add(db_document)
-        db.commit()
-        db.refresh(db_document)
-        print(f"Backend: Document saved with ID: {db_document.id}")
-        
-        # IMPORTANT: Extract text synchronously first to ensure it works
-        text = processor.extract_text_from_pdf(contents)
-        if not text or len(text.strip()) < 50:
-            db_document.status = "failed: Could not extract text from PDF"
-            db.commit()
-            raise HTTPException(
-                status_code=400, 
-                detail="Could not extract text from PDF. The file might be scanned or corrupted."
-            )
-        
-        print(f"Backend: Text extraction successful, starting async processing")
-        
-        # Process asynchronously
-        import threading
-        thread = threading.Thread(
-            target=process_document_async,
-            args=(db_document.id, contents, db)
-        )
-        thread.daemon = True
-        thread.start()
-        print(f"Backend: Started async processing for document {db_document.id}")
-        
-        # Return immediate response
-        return db_document
-        
-    except Exception as e:
-        print(f"Backend: Upload error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=str(e))
-
         
 @app.get("/contracts", response_model=List[schemas.ContractResponse])
 async def get_contracts(
@@ -662,155 +676,3 @@ async def review_contract(
     db.commit()
     
     return {"status": "success"}
-      
-
-def process_document_async(document_id: int, file_content: bytes, db: Session, 
-                          is_amendment: bool = False, parent_document_id: Optional[int] = None):
-    """Async processing function - FIXED VERSION"""
-    try:
-        print(f"Starting async processing for document {document_id}, Amendment: {is_amendment}")
-        
-        from app.database import SessionLocal
-        local_db = SessionLocal()
-        
-        try:
-            # Update document status
-            document = local_db.query(models.Document)\
-                .filter(models.Document.id == document_id)\
-                .first()
-            
-            if not document:
-                print(f"Document {document_id} not found")
-                return
-                
-            document.status = "processing"
-            local_db.commit()
-            
-            # Extract text - FIXED: Now returns string, not dict
-            print(f"Extracting text from PDF for document {document_id}")
-            text = processor.extract_text_from_pdf(file_content)
-            
-            if not text or len(text.strip()) < 50:
-                print(f"No substantial text extracted from document {document_id}")
-                document.status = "failed: No text extracted"
-                local_db.commit()
-                return
-            
-            print(f"Text extracted, length: {len(text)} characters")
-            
-            # Process contract - FIXED: Pass text only, not metadata
-            print(f"Processing contract with enhanced extraction")
-            extraction = processor.process_contract(text)
-            
-            print(f"Extraction completed, confidence: {extraction.get('confidence_score')}")
-            
-            # Handle versioning if this is an amendment
-            previous_contract = None
-            version = 1
-            
-            if is_amendment and parent_document_id:
-                # Find the latest version of the parent contract
-                parent_doc = local_db.query(models.Document)\
-                    .filter(models.Document.id == parent_document_id)\
-                    .first()
-                
-                if parent_doc:
-                    previous_contract = local_db.query(models.Contract)\
-                        .filter(models.Contract.document_id == parent_doc.id)\
-                        .order_by(models.Contract.version.desc())\
-                        .first()
-                    
-                    if previous_contract:
-                        version = previous_contract.version + 1
-            
-            # Save contract with all extracted fields
-            contract = models.Contract(
-                document_id=document_id,
-                contract_type=extraction.get("contract_type", "Unknown"),
-                contract_subtype=extraction.get("contract_subtype"),
-                master_agreement_id=extraction.get("master_agreement_id"),
-                parties=extraction.get("parties", []),
-                effective_date=extraction.get("dates", {}).get("effective_date"),
-                expiration_date=extraction.get("dates", {}).get("expiration_date"),
-                execution_date=extraction.get("dates", {}).get("execution_date"),
-                termination_date=extraction.get("dates", {}).get("termination_date"),
-                total_value=extraction.get("financial", {}).get("total_value"),
-                currency=extraction.get("financial", {}).get("currency"),
-                payment_terms=extraction.get("financial", {}).get("payment_terms"),
-                billing_frequency=extraction.get("financial", {}).get("billing_frequency"),
-                signatories=extraction.get("signatories", []),
-                contacts=extraction.get("contacts", []),
-                auto_renewal=extraction.get("legal_terms", {}).get("auto_renewal"),
-                renewal_notice_period=extraction.get("legal_terms", {}).get("renewal_notice_period"),
-                termination_notice_period=extraction.get("legal_terms", {}).get("termination_notice_period"),
-                governing_law=extraction.get("legal_terms", {}).get("governing_law"),
-                jurisdiction=extraction.get("legal_terms", {}).get("jurisdiction"),
-                confidentiality=extraction.get("legal_terms", {}).get("confidentiality"),
-                indemnification=extraction.get("legal_terms", {}).get("indemnification"),
-                liability_cap=extraction.get("legal_terms", {}).get("liability_cap"),
-                insurance_requirements=extraction.get("legal_terms", {}).get("insurance_requirements"),
-                service_levels=extraction.get("service_levels", {}),
-                deliverables=extraction.get("deliverables", []),
-                risk_score=extraction.get("risk_score", 0.0),
-                risk_factors=extraction.get("risk_factors", []),
-                clauses=extraction.get("clauses", {}),
-                key_fields=extraction.get("key_fields", {}),
-                extracted_metadata=extraction.get("metadata", {}),
-                confidence_score=extraction.get("confidence_score", 0.0),
-                version=version,
-                previous_version_id=previous_contract.id if previous_contract else None,
-                change_summary=f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction"
-            )
-            
-            local_db.add(contract)
-            local_db.commit()
-            local_db.refresh(contract)
-            
-            print(f"Contract saved with ID: {contract.id}, Version: {version}")
-            
-            # Create embeddings for RAG
-            print(f"Creating embeddings for contract {contract.id}")
-            rag = RAGEngine()
-            embeddings = rag.create_embeddings(text)
-            
-            for emb in embeddings:
-                rag_entry = models.RAGEmbedding(
-                    contract_id=contract.id,
-                    text_chunk=emb["text_chunk"],
-                    embedding=emb["embedding"],
-                    chunk_metadata=emb["metadata"],
-                    version=version
-                )
-                local_db.add(rag_entry)
-            
-            local_db.commit()
-            
-            # Update document status
-            document.status = "completed"
-            document.version = version
-            local_db.commit()
-            
-            print(f"Document {document_id} processing completed successfully")
-            
-        except Exception as e:
-            print(f"Error processing document {document_id}: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            
-            # Update document status to failed
-            try:
-                document = local_db.query(models.Document)\
-                    .filter(models.Document.id == document_id)\
-                    .first()
-                if document:
-                    document.status = f"failed: {str(e)[:100]}"
-                    local_db.commit()
-            except:
-                pass
-        finally:
-            local_db.close()
-            
-    except Exception as e:
-        print(f"Outer error in async processing: {str(e)}")
-        import traceback
-        traceback.print_exc()
