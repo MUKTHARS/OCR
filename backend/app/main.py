@@ -327,10 +327,33 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                     if previous_contract:
                         version = previous_contract.version + 1
                         
-                        # Compare versions
+                        # Prepare extraction data from previous contract
+                        previous_extraction = {
+                            "contract_type": previous_contract.contract_type,
+                            "contract_subtype": previous_contract.contract_subtype,
+                            "master_agreement_id": previous_contract.master_agreement_id,
+                            "parties": previous_contract.parties,
+                            "dates": {
+                                "effective_date": previous_contract.effective_date,
+                                "expiration_date": previous_contract.expiration_date,
+                                "execution_date": previous_contract.execution_date,
+                                "termination_date": previous_contract.termination_date,
+                            },
+                            "financial": {
+                                "total_value": previous_contract.total_value,
+                                "currency": previous_contract.currency,
+                                "payment_terms": previous_contract.payment_terms,
+                                "billing_frequency": previous_contract.billing_frequency,
+                            },
+                            "clauses": previous_contract.clauses or {},
+                            "key_fields": previous_contract.key_fields or {},
+                            "confidence_score": previous_contract.confidence_score,
+                        }
+                        
+                        # Compare versions using full extraction
                         comparison = processor.compare_versions(
-                            json.loads(json.dumps(previous_contract.clauses)),
-                            extraction.get("clauses", {})
+                            previous_extraction,
+                            extraction
                         )
                         
                         # Store deltas
@@ -339,8 +362,8 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                                 contract_id=previous_contract.id,
                                 previous_version_id=previous_contract.previous_version_id,
                                 field_name=delta["field_name"],
-                                old_value=delta["old_value"],
-                                new_value=delta["new_value"],
+                                old_value=json.dumps(delta["old_value"]) if delta["old_value"] else None,
+                                new_value=json.dumps(delta["new_value"]) if delta["new_value"] else None,
                                 change_type=delta["change_type"],
                                 confidence_change=comparison.get("confidence_change")
                             )
@@ -426,46 +449,7 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
             # Get risk factors
             risk_factors_list = extract_risk_factors(extraction)
             
-            # Save contract with all extracted fields
-            # contract = models.Contract(
-            #     document_id=document_id,
-            #     contract_type=extraction.get("contract_type", "Unknown"),
-            #     contract_subtype=extraction.get("contract_subtype"),
-            #     master_agreement_id=extraction.get("master_agreement_id"),
-            #     parties=extraction.get("parties", []),
-            #     effective_date=extraction.get("dates", {}).get("effective_date"),
-            #     expiration_date=extraction.get("dates", {}).get("expiration_date"),
-            #     execution_date=extraction.get("dates", {}).get("execution_date"),
-            #     termination_date=extraction.get("dates", {}).get("termination_date"),
-            #     total_value=extraction.get("financial", {}).get("total_value"),
-            #     currency=extraction.get("financial", {}).get("currency"),
-            #     payment_terms=extraction.get("financial", {}).get("payment_terms"),
-            #     billing_frequency=extraction.get("financial", {}).get("billing_frequency"),
-            #     signatories=signatories_list,
-            #     contacts=contacts_list,
-            #     auto_renewal=extraction.get("risk_indicators", {}).get("auto_renewal"),
-            #     renewal_notice_period=extraction.get("dates", {}).get("notice_period_days"),
-            #     termination_notice_period=extraction.get("dates", {}).get("notice_period_days"),
-            #     governing_law=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
-            #     jurisdiction=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
-            #     confidentiality=extraction.get("clauses", {}).get("confidentiality") is not None,
-            #     indemnification=extraction.get("clauses", {}).get("indemnification") is not None,
-            #     liability_cap=extraction.get("key_fields", {}).get("liability_cap", {}).get("value") if extraction.get("key_fields", {}).get("liability_cap") else None,
-            #     insurance_requirements=extraction.get("compliance_requirements", {}).get("minimum_coverage"),
-            #     service_levels=extraction.get("service_levels", {}),
-            #     deliverables=extraction.get("deliverables", []),
-            #     risk_score=extraction.get("risk_score", 0.0),
-            #     risk_factors=risk_factors_list,
-            #     clauses=extraction.get("clauses", {}),
-            #     key_fields=extraction.get("key_fields", {}),
-            #     extracted_metadata=extraction.get("metadata", {}),  # Changed from 'metadata' to 'extracted_metadata'
-            #     confidence_score=extraction.get("confidence_score", 0.0),
-            #     version=version,
-            #     previous_version_id=previous_contract.id if previous_contract else None,
-            #     change_summary=f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction"
-            # )
-            
-                # Helper function to clean date values
+            # Helper function to clean date values
             def clean_date(date_value):
                 """Convert empty strings to None for date fields"""
                 if not date_value or date_value == "" or date_value == "Unknown":
@@ -742,11 +726,53 @@ async def compare_contracts(
         if not contract1 or not contract2:
             raise HTTPException(status_code=404, detail="One or both contracts not found")
         
+        # Prepare extraction data for comparison
+        extraction1 = {
+            "contract_type": contract1.contract_type,
+            "contract_subtype": contract1.contract_subtype,
+            "master_agreement_id": contract1.master_agreement_id,
+            "parties": contract1.parties,
+            "dates": {
+                "effective_date": contract1.effective_date,
+                "expiration_date": contract1.expiration_date,
+                "execution_date": contract1.execution_date,
+                "termination_date": contract1.termination_date,
+            },
+            "financial": {
+                "total_value": contract1.total_value,
+                "currency": contract1.currency,
+                "payment_terms": contract1.payment_terms,
+                "billing_frequency": contract1.billing_frequency,
+            },
+            "clauses": contract1.clauses or {},
+            "key_fields": contract1.key_fields or {},
+            "confidence_score": contract1.confidence_score,
+        }
+        
+        extraction2 = {
+            "contract_type": contract2.contract_type,
+            "contract_subtype": contract2.contract_subtype,
+            "master_agreement_id": contract2.master_agreement_id,
+            "parties": contract2.parties,
+            "dates": {
+                "effective_date": contract2.effective_date,
+                "expiration_date": contract2.expiration_date,
+                "execution_date": contract2.execution_date,
+                "termination_date": contract2.termination_date,
+            },
+            "financial": {
+                "total_value": contract2.total_value,
+                "currency": contract2.currency,
+                "payment_terms": contract2.payment_terms,
+                "billing_frequency": contract2.billing_frequency,
+            },
+            "clauses": contract2.clauses or {},
+            "key_fields": contract2.key_fields or {},
+            "confidence_score": contract2.confidence_score,
+        }
+        
         # Use the processor to compare
-        comparison = processor.compare_versions(
-            contract1.clauses if contract1.clauses else {},
-            contract2.clauses if contract2.clauses else {}
-        )
+        comparison = processor.compare_versions(extraction1, extraction2)
         
         # Generate AI-powered comparison summary
         comparison_summary = generate_comparison_summary(
@@ -778,29 +804,61 @@ async def compare_contracts(
         raise HTTPException(status_code=500, detail=str(e))
 
 def generate_comparison_summary(contract1, contract2, deltas):
-    """Generate AI-powered comparison summary"""
+    """Generate detailed comparison summary"""
     if not deltas:
-        return "No significant changes detected between the two contracts."
+        return "No changes detected between the two versions."
     
-    # Count changes by category
-    financial_changes = sum(1 for d in deltas if "financial" in d["field_name"])
-    legal_changes = sum(1 for d in deltas if "clauses" in d["field_name"])
-    date_changes = sum(1 for d in deltas if "date" in d["field_name"])
+    # Group changes by category
+    changes_by_category = {
+        "financial": [],
+        "legal": [],
+        "dates": [],
+        "parties": [],
+        "clauses": [],
+        "other": []
+    }
     
+    for delta in deltas:
+        field_name = delta["field_name"].lower()
+        
+        if any(term in field_name for term in ["financial", "payment", "value", "amount", "currency"]):
+            changes_by_category["financial"].append(delta)
+        elif any(term in field_name for term in ["clause", "legal", "liability", "indemn", "confidential"]):
+            changes_by_category["legal"].append(delta)
+        elif "date" in field_name:
+            changes_by_category["dates"].append(delta)
+        elif any(term in field_name for term in ["party", "signatory", "contact"]):
+            changes_by_category["parties"].append(delta)
+        elif "clause" in field_name:
+            changes_by_category["clauses"].append(delta)
+        else:
+            changes_by_category["other"].append(delta)
+    
+    # Build summary
     summary_parts = []
     
-    if financial_changes > 0:
-        summary_parts.append(f"{financial_changes} financial change(s)")
-    if legal_changes > 0:
-        summary_parts.append(f"{legal_changes} legal clause change(s)")
-    if date_changes > 0:
-        summary_parts.append(f"{date_changes} date change(s)")
+    for category, changes in changes_by_category.items():
+        if changes:
+            count = len(changes)
+            added = sum(1 for c in changes if c.get("change_type") == "added")
+            removed = sum(1 for c in changes if c.get("change_type") == "removed")
+            modified = sum(1 for c in changes if c.get("change_type") == "modified")
+            
+            category_summary = f"{count} {category} changes"
+            if added or removed or modified:
+                details = []
+                if added: details.append(f"{added} added")
+                if removed: details.append(f"{removed} removed")
+                if modified: details.append(f"{modified} modified")
+                category_summary += f" ({', '.join(details)})"
+            
+            summary_parts.append(category_summary)
     
     if summary_parts:
-        return f"Key changes detected: {', '.join(summary_parts)}. Review highlighted sections for details."
+        return f"Amendment detected. Key changes: {', '.join(summary_parts)}."
     
-    return "Minor formatting or textual changes detected."
-
+    return "Minor changes detected."
+    
 def generate_suggested_actions(comparison):
     """Generate suggested actions based on comparison"""
     actions = []

@@ -350,65 +350,154 @@ class ContractProcessor:
         }
     
     def compare_versions(self, old_extraction: Dict[str, Any], new_extraction: Dict[str, Any]) -> Dict[str, Any]:
-        """Compare two contract versions and identify changes"""
+        """Enhanced version comparison for amendments"""
         deltas = []
         
-        # Compare key fields
-        for field in ["parties", "dates", "financial"]:
-            old_val = old_extraction.get(field, {})
-            new_val = new_extraction.get(field, {})
+        # Define comparison strategies for different field types
+        def compare_lists(old_list, new_list, field_name):
+            """Compare lists and identify additions/removals"""
+            if not old_list and not new_list:
+                return []
             
-            if old_val != new_val:
+            old_list = old_list or []
+            new_list = new_list or []
+            
+            changes = []
+            old_set = set(str(item) for item in old_list)
+            new_set = set(str(item) for item in new_list)
+            
+            # Items removed
+            for item in old_set - new_set:
+                changes.append({
+                    "field_name": f"{field_name}.removed",
+                    "old_value": item,
+                    "new_value": None,
+                    "change_type": "removed"
+                })
+            
+            # Items added
+            for item in new_set - old_set:
+                changes.append({
+                    "field_name": f"{field_name}.added",
+                    "old_value": None,
+                    "new_value": item,
+                    "change_type": "added"
+                })
+            
+            return changes
+        
+        def compare_dicts(old_dict, new_dict, field_name):
+            """Compare dictionaries recursively"""
+            if not old_dict and not new_dict:
+                return []
+            
+            old_dict = old_dict or {}
+            new_dict = new_dict or {}
+            
+            changes = []
+            all_keys = set(old_dict.keys()) | set(new_dict.keys())
+            
+            for key in all_keys:
+                old_val = old_dict.get(key)
+                new_val = new_dict.get(key)
+                
+                # Handle nested structures
                 if isinstance(old_val, dict) and isinstance(new_val, dict):
-                    for subfield in set(old_val.keys()) | set(new_val.keys()):
-                        if old_val.get(subfield) != new_val.get(subfield):
-                            deltas.append({
-                                "field_name": f"{field}.{subfield}",
-                                "old_value": old_val.get(subfield),
-                                "new_value": new_val.get(subfield),
-                                "change_type": "modified" if subfield in old_val and subfield in new_val else "added" if subfield in new_val else "removed"
-                            })
-                else:
-                    deltas.append({
-                        "field_name": field,
+                    nested_changes = compare_dicts(old_val, new_val, f"{field_name}.{key}")
+                    changes.extend(nested_changes)
+                elif isinstance(old_val, list) and isinstance(new_val, list):
+                    list_changes = compare_lists(old_val, new_val, f"{field_name}.{key}")
+                    changes.extend(list_changes)
+                elif old_val != new_val:
+                    changes.append({
+                        "field_name": f"{field_name}.{key}",
                         "old_value": old_val,
                         "new_value": new_val,
-                        "change_type": "modified"
+                        "change_type": "modified" if old_val is not None and new_val is not None else "added" if new_val is not None else "removed"
                     })
+            
+            return changes
         
-        # Compare clauses
-        old_clauses = set(old_extraction.get("clauses", {}).keys())
-        new_clauses = set(new_extraction.get("clauses", {}).keys())
+        # Compare all fields recursively
+        def compare_all_fields(old_data, new_data, path=""):
+            """Recursively compare all fields between two dictionaries"""
+            if not old_data and not new_data:
+                return []
+            
+            old_data = old_data or {}
+            new_data = new_data or {}
+            
+            changes = []
+            all_keys = set(old_data.keys()) | set(new_data.keys())
+            
+            for key in all_keys:
+                current_path = f"{path}.{key}" if path else key
+                old_val = old_data.get(key)
+                new_val = new_data.get(key)
+                
+                # Skip metadata fields that shouldn't be compared
+                if key in ['metadata', 'extracted_metadata', 'extraction_date', 'confidence_score', 'risk_score']:
+                    continue
+                
+                if isinstance(old_val, dict) and isinstance(new_val, dict):
+                    # Recursively compare dictionaries
+                    nested_changes = compare_all_fields(old_val, new_val, current_path)
+                    changes.extend(nested_changes)
+                elif isinstance(old_val, list) and isinstance(new_val, list):
+                    # Compare lists
+                    list_changes = compare_lists(old_val, new_val, current_path)
+                    changes.extend(list_changes)
+                elif old_val != new_val:
+                    # Simple value comparison
+                    changes.append({
+                        "field_name": current_path,
+                        "old_value": old_val,
+                        "new_value": new_val,
+                        "change_type": "modified" if old_val is not None and new_val is not None else "added" if new_val is not None else "removed"
+                    })
+            
+            return changes
         
-        for clause in old_clauses - new_clauses:
-            deltas.append({
-                "field_name": f"clauses.{clause}",
-                "old_value": old_extraction["clauses"][clause],
-                "new_value": None,
-                "change_type": "removed"
-            })
+        # Start comparison from root level
+        deltas = compare_all_fields(old_extraction, new_extraction)
         
-        for clause in new_clauses - old_clauses:
-            deltas.append({
-                "field_name": f"clauses.{clause}",
-                "old_value": None,
-                "new_value": new_extraction["clauses"][clause],
-                "change_type": "added"
-            })
+        # Filter out None values that are the same
+        deltas = [delta for delta in deltas if delta["old_value"] != delta["new_value"]]
         
-        for clause in old_clauses & new_clauses:
-            if old_extraction["clauses"][clause] != new_extraction["clauses"][clause]:
-                deltas.append({
-                    "field_name": f"clauses.{clause}",
-                    "old_value": old_extraction["clauses"][clause],
-                    "new_value": new_extraction["clauses"][clause],
-                    "change_type": "modified"
-                })
+        # Generate a summary of changes
+        summary_parts = []
+        if deltas:
+            summary_parts.append(f"Found {len(deltas)} changes")
+            
+            # Count by change type
+            added = sum(1 for d in deltas if d["change_type"] == "added")
+            removed = sum(1 for d in deltas if d["change_type"] == "removed")
+            modified = sum(1 for d in deltas if d["change_type"] == "modified")
+            
+            if added:
+                summary_parts.append(f"{added} additions")
+            if removed:
+                summary_parts.append(f"{removed} removals")
+            if modified:
+                summary_parts.append(f"{modified} modifications")
+        
+        summary = "No changes detected." if not deltas else f"Amendment analysis: {', '.join(summary_parts)}."
+        
+        # Calculate confidence change
+        old_conf = old_extraction.get("confidence_score", 0.0)
+        new_conf = new_extraction.get("confidence_score", 0.0)
+        confidence_change = new_conf - old_conf
         
         return {
-            "deltas": deltas,
-            "summary": f"Found {len(deltas)} changes between versions",
-            "confidence_change": new_extraction.get("confidence_score", 0) - old_extraction.get("confidence_score", 0)
+            "deltas": deltas[:50],  # Limit to 50 most important changes
+            "summary": summary,
+            "confidence_change": confidence_change,
+            "statistics": {
+                "total_changes": len(deltas),
+                "added": sum(1 for d in deltas if d["change_type"] == "added"),
+                "removed": sum(1 for d in deltas if d["change_type"] == "removed"),
+                "modified": sum(1 for d in deltas if d["change_type"] == "modified")
+            }
         }
 
     def extract_tables_from_text(self, text: str) -> Dict[str, Any]:
@@ -664,3 +753,55 @@ class ContractProcessor:
         }
         
         return merged
+
+    def compare_text_content(self, old_text: str, new_text: str) -> Dict[str, Any]:
+        """Compare raw text content for amendments using OpenAI"""
+        try:
+            prompt = f"""Compare these two contract versions and identify ALL changes between them.
+
+            OLD VERSION:
+            {old_text[:8000]}
+
+            NEW VERSION (Amendment):
+            {new_text[:8000]}
+
+            Analyze and return ALL changes in this structured format:
+            1. Added clauses (completely new text)
+            2. Removed clauses (text deleted)
+            3. Modified clauses (text changed)
+            4. Changed dates, amounts, or other values
+            5. Changed parties or signatories
+
+            Return as JSON with this structure:
+            {{
+                "summary": "Brief summary of changes",
+                "changes": [
+                    {{
+                        "type": "added|removed|modified",
+                        "section": "Section name",
+                        "description": "What changed",
+                        "old_value": "Previous text/values",
+                        "new_value": "New text/values"
+                    }}
+                ],
+                "key_impacts": ["List key business impacts"],
+                "recommendations": ["Review recommendations"]
+            }}
+            """
+            
+            response = client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[
+                    {"role": "system", "content": "You are a legal contract comparison expert. Analyze amendments thoroughly."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=3000,
+                response_format={"type": "json_object"}
+            )
+            
+            return json.loads(response.choices[0].message.content)
+            
+        except Exception as e:
+            print(f"Error comparing text content: {e}")
+            return {"summary": "Comparison failed", "changes": []}

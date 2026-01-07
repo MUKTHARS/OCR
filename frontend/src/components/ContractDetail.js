@@ -736,52 +736,77 @@ const ContractDetail = ({ contractId, onReviewUpdate }) => {
           )}
         </DialogTitle>
         <DialogContent>
-          {selectedVersions.length === 2 && deltas.length > 0 ? (
-            <TableContainer>
-              <Table size="small">
+         // In the version comparison dialog, update the table rendering:
+{selectedVersions.length === 2 && deltas.length > 0 ? (
+    <Box>
+        <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="subtitle2">
+                Found {deltas.length} changes between versions
+            </Typography>
+        </Alert>
+        <TableContainer>
+            <Table size="small">
                 <TableHead>
-                  <TableRow>
-                    <TableCell>Field</TableCell>
-                    <TableCell>v{selectedVersions[0].version}</TableCell>
-                    <TableCell>v{selectedVersions[1].version}</TableCell>
-                    <TableCell>Change Type</TableCell>
-                  </TableRow>
+                    <TableRow>
+                        <TableCell>Field</TableCell>
+                        <TableCell>Change Type</TableCell>
+                        <TableCell>Previous Value</TableCell>
+                        <TableCell>New Value</TableCell>
+                        <TableCell>Impact</TableCell>
+                    </TableRow>
                 </TableHead>
                 <TableBody>
-                  {deltas.map((delta, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
-                          {delta.field_name}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {delta.old_value ? JSON.stringify(delta.old_value).slice(0, 100) : '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {delta.new_value ? JSON.stringify(delta.new_value).slice(0, 100) : '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={delta.change_type}
-                          size="small"
-                          color={delta.change_type === 'added' ? 'success' : delta.change_type === 'removed' ? 'error' : 'warning'}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                    {deltas.map((delta, idx) => (
+                        <TableRow key={idx} hover>
+                            <TableCell>
+                                <Typography variant="body2" fontWeight="medium">
+                                    {delta.field_name.replace(/\./g, ' → ')}
+                                </Typography>
+                            </TableCell>
+                            <TableCell>
+                                <Chip
+                                    label={delta.change_type}
+                                    size="small"
+                                    color={
+                                        delta.change_type === 'added' ? 'success' : 
+                                        delta.change_type === 'removed' ? 'error' : 'warning'
+                                    }
+                                />
+                            </TableCell>
+                            <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                    {delta.old_value ? 
+                                        (typeof delta.old_value === 'string' ? 
+                                            delta.old_value.slice(0, 100) : 
+                                            JSON.stringify(delta.old_value).slice(0, 100)) : 
+                                        '—'
+                                    }
+                                </Typography>
+                            </TableCell>
+                            <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                    {delta.new_value ? 
+                                        (typeof delta.new_value === 'string' ? 
+                                            delta.new_value.slice(0, 100) : 
+                                            JSON.stringify(delta.new_value).slice(0, 100)) : 
+                                        '—'
+                                    }
+                                </Typography>
+                            </TableCell>
+                            <TableCell>
+                                {getImpactLevel(delta.field_name, delta.change_type)}
+                            </TableCell>
+                        </TableRow>
+                    ))}
                 </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              No changes detected between selected versions
-            </Alert>
-          )}
+            </Table>
+        </TableContainer>
+    </Box>
+) : (
+    <Alert severity="info" sx={{ mt: 2 }}>
+        No changes detected between selected versions
+    </Alert>
+)}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setComparisonDialog(false)}>Close</Button>
