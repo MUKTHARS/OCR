@@ -39,7 +39,9 @@ const ContractClauses = ({ clauses = {} }) => {
       <Divider sx={{ mb: 3 }} />
       
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {Object.entries(clauses).map(([clauseName, clauseData]) => (
+        {Object.entries(clauses)
+          .filter(([_, clauseData]) => clauseData !== null) // Add this filter to skip null clauseData
+          .map(([clauseName, clauseData]) => (
           <Accordion 
             key={clauseName}
             sx={{ 
@@ -66,7 +68,7 @@ const ContractClauses = ({ clauses = {} }) => {
                     <Typography variant="subtitle1" fontWeight={600}>
                       {clauseName.replace(/_/g, ' ').toUpperCase()}
                     </Typography>
-                    {clauseData.category && (
+                    {clauseData?.category && ( // Use optional chaining here
                       <Typography variant="caption" color="text.secondary">
                         {clauseData.category}
                       </Typography>
@@ -75,7 +77,7 @@ const ContractClauses = ({ clauses = {} }) => {
                 </Box>
                 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {clauseData.risk_level && (
+                  {clauseData?.risk_level && ( // Use optional chaining here
                     <Chip
                       label={`Risk: ${clauseData.risk_level}`}
                       size="small"
@@ -84,7 +86,7 @@ const ContractClauses = ({ clauses = {} }) => {
                       sx={{ fontWeight: 500 }}
                     />
                   )}
-                  {clauseData.confidence && (
+                  {clauseData?.confidence && ( // Use optional chaining here
                     <Chip
                       label={`${Math.round(clauseData.confidence * 100)}%`}
                       size="small"
@@ -111,7 +113,7 @@ const ContractClauses = ({ clauses = {} }) => {
                   color: 'text.primary',
                 }}
               >
-                {clauseData.text}
+                {clauseData?.text || 'No text available'} {/* Use optional chaining here */}
               </Typography>
             </AccordionDetails>
           </Accordion>

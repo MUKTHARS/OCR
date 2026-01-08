@@ -179,7 +179,7 @@ const RecentContracts = ({ contracts = [], onViewContract, onCompare }) => {
                           <VisibilityOutlined fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Compare">
+                      {/* <Tooltip title="Compare">
                         <IconButton 
                           size="small"
                           onClick={(e) => {
@@ -189,7 +189,7 @@ const RecentContracts = ({ contracts = [], onViewContract, onCompare }) => {
                         >
                           <CompareOutlined fontSize="small" />
                         </IconButton>
-                      </Tooltip>
+                      </Tooltip> */}
                     </Box>
                   </TableCell>
                 </TableRow>

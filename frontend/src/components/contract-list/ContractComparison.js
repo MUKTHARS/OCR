@@ -177,6 +177,76 @@ const ComparisonPanel = ({
   );
 };
 
+// Helper function to safely display object values as text
+const formatValueForDisplay = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+  
+  // If it's an object, try to extract meaningful text from it
+  if (typeof value === 'object') {
+    // Check if it's a plain object (not array, date, etc.)
+    if (value.constructor === Object) {
+      // Try to extract text from common fields
+      if (value.text) return value.text;
+      if (value.value) return value.value;
+      if (value.name) return value.name;
+      if (value.label) return value.label;
+      if (value.description) return value.description;
+      
+      // If it has a text field that's malformed (like in the error), handle it
+      if (typeof value.text === 'string') {
+        // Clean up malformed JSON-like strings
+        const text = value.text.trim();
+        if (text.includes('{') && text.includes('}')) {
+          // Remove any malformed JSON markers and return clean text
+          return text.replace(/{.*?"text":"(.*?)".*?}/, '$1').trim();
+        }
+        return text;
+      }
+      
+      // Otherwise, join all values as a simple string
+      try {
+        const values = Object.values(value).filter(v => 
+          v !== null && v !== undefined && typeof v !== 'object'
+        );
+        return values.join(', ');
+      } catch {
+        return '[Object]';
+      }
+    }
+    
+    // For arrays, join them
+    if (Array.isArray(value)) {
+      return value.filter(v => v !== null && v !== undefined).join(', ');
+    }
+    
+    // For dates
+    if (value instanceof Date) {
+      return value.toLocaleDateString();
+    }
+    
+    // For other object types, use toString
+    return String(value);
+  }
+  
+  // For strings, clean up any malformed JSON
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    // If it looks like malformed JSON, extract text content
+    if (trimmed.includes('{') && trimmed.includes('"text":')) {
+      const match = trimmed.match(/"text"\s*:\s*"([^"]+)"/);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    return trimmed;
+  }
+  
+  // For numbers, booleans, etc.
+  return String(value);
+};
+
 const ComparisonDialog = ({
   open,
   onClose,
@@ -201,7 +271,7 @@ ${comparisonResult.suggested_actions?.map(action => `• ${action}`).join('\n') 
 
 Detailed Changes:
 ${comparisonResult.comparison?.deltas?.map(delta => 
-  `${delta.field_name} (${delta.change_type}): ${delta.old_value || 'N/A'} → ${delta.new_value || 'N/A'}`
+  `${delta.field_name} (${delta.change_type}): ${formatValueForDisplay(delta.old_value)} → ${formatValueForDisplay(delta.new_value)}`
 ).join('\n') || 'No changes detected'}
     `;
     
@@ -318,23 +388,13 @@ ${comparisonResult.comparison?.deltas?.map(delta =>
                             />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {delta.old_value ? 
-                                (typeof delta.old_value === 'object' ? 
-                                  JSON.stringify(delta.old_value).slice(0, 100) : 
-                                  String(delta.old_value).slice(0, 100)) : 
-                                '—'
-                              }
+                            <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                              {formatValueForDisplay(delta.old_value)}
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {delta.new_value ? 
-                                (typeof delta.new_value === 'object' ? 
-                                  JSON.stringify(delta.new_value).slice(0, 100) : 
-                                  String(delta.new_value).slice(0, 100)) : 
-                                '—'
-                              }
+                            <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                              {formatValueForDisplay(delta.new_value)}
                             </Typography>
                           </TableCell>
                         </TableRow>

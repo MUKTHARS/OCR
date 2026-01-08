@@ -40,7 +40,7 @@ const DashboardHeader = ({ title, subtitle, onRefresh }) => {
           )}
         </Box>
         
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {/* <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Tooltip title="Refresh data">
             <IconButton 
               onClick={onRefresh}
@@ -79,7 +79,7 @@ const DashboardHeader = ({ title, subtitle, onRefresh }) => {
               <PersonOutlined />
             </IconButton>
           </Tooltip>
-        </Box>
+        </Box> */}
       </Box>
       
       <Box sx={{ 
