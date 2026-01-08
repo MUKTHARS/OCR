@@ -29,6 +29,10 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  Avatar,
+  AvatarGroup,
+  alpha,
+  useTheme,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -48,8 +52,23 @@ import {
   CalendarToday,
   AttachMoney,
   Compare,
+  Assessment,
+  Shield,
+  ReceiptLong,
+  CorporateFare,
+  Timeline,
+  BarChart,
+  FilterList,
+  MoreVert,
+  Download,
+  ArrowUpward,
+  ArrowDownward,
 } from '@mui/icons-material';
 import { getContractSummary, getContracts, searchContracts, compareContracts } from '../services/api';
+
+// Import premium fonts (add these to your index.html or CSS)
+// Add these in your index.html head:
+// <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
 const ContractDashboard = () => {
   const [summary, setSummary] = useState(null);
@@ -63,6 +82,10 @@ const ContractDashboard = () => {
   const [selectedForCompare, setSelectedForCompare] = useState([]);
   const [comparisonResult, setComparisonResult] = useState(null);
   const [comparing, setComparing] = useState(false);
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [riskFilter, setRiskFilter] = useState('all');
+
+  const theme = useTheme();
 
   useEffect(() => {
     fetchDashboardData();
@@ -130,10 +153,8 @@ const ContractDashboard = () => {
 
   const handleCompareSelect = (contract) => {
     if (selectedForCompare.some(c => c.id === contract.id)) {
-      // Remove from selection
       setSelectedForCompare(selectedForCompare.filter(c => c.id !== contract.id));
     } else if (selectedForCompare.length < 2) {
-      // Add to selection
       setSelectedForCompare([...selectedForCompare, contract]);
     }
   };
@@ -164,22 +185,32 @@ const ContractDashboard = () => {
   };
 
   const getRiskColor = (score) => {
-    if (score >= 0.7) return 'error';
-    if (score >= 0.3) return 'warning';
-    return 'success';
+    if (score >= 0.7) return '#ff4444';
+    if (score >= 0.3) return '#ffaa00';
+    return '#00c853';
+  };
+
+  const getRiskGradient = (score) => {
+    if (score >= 0.7) return 'linear-gradient(135deg, #ff4444, #ff6b6b)';
+    if (score >= 0.3) return 'linear-gradient(135deg, #ffaa00, #ffcc33)';
+    return 'linear-gradient(135deg, #00c853, #64dd17)';
   };
 
   const getRiskLabel = (score) => {
-    if (score >= 0.7) return 'High Risk';
-    if (score >= 0.3) return 'Medium Risk';
-    return 'Low Risk';
+    if (score >= 0.7) return 'High';
+    if (score >= 0.3) return 'Medium';
+    return 'Low';
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString();
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: 'numeric'
+      });
     } catch {
       return 'Invalid Date';
     }
@@ -188,369 +219,757 @@ const ContractDashboard = () => {
   const formatCurrency = (value, currency) => {
     if (!value && value !== 0) return 'N/A';
     const formattedValue = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(value);
     return `${currency || 'USD'} ${formattedValue}`;
   };
 
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'active': return '#00c853';
+      case 'expired': return '#ff4444';
+      case 'pending': return '#ffaa00';
+      default: return '#9e9e9e';
+    }
+  };
+
+  const StatCard = ({ title, value, change, icon, color, subtitle }) => (
+    <Card 
+      sx={{ 
+        height: '100%',
+        borderRadius: 2,
+        border: 'none',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-4px)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        },
+        background: `linear-gradient(135deg, ${color}15, ${color}08)`,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: -20,
+          right: -20,
+          width: 100,
+          height: 100,
+          borderRadius: '50%',
+          background: `radial-gradient(circle, ${color}20, transparent 70%)`,
+          opacity: 0.6,
+        }}
+      />
+      <CardContent sx={{ p: 3, position: 'relative' }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: 2,
+              background: `${color}20`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mr: 2,
+            }}
+          >
+            {React.cloneElement(icon, { 
+              sx: { color, fontSize: 24 } 
+            })}
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: 'text.secondary',
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 500,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                fontSize: '0.75rem',
+                mb: 0.5,
+              }}
+            >
+              {title}
+            </Typography>
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 700,
+                color: 'text.primary',
+              }}
+            >
+              {value}
+            </Typography>
+          </Box>
+        </Box>
+        {subtitle && (
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              color: 'text.secondary',
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 400,
+              display: 'block',
+              mt: 1,
+            }}
+          >
+            {subtitle}
+          </Typography>
+        )}
+        {change && (
+          <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+            {change > 0 ? (
+              <ArrowUpward sx={{ fontSize: 16, color: '#00c853', mr: 0.5 }} />
+            ) : (
+              <ArrowDownward sx={{ fontSize: 16, color: '#ff4444', mr: 0.5 }} />
+            )}
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                color: change > 0 ? '#00c853' : '#ff4444',
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 600,
+              }}
+            >
+              {Math.abs(change)}% from last month
+            </Typography>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const ContractCard = ({ contract }) => (
+    <Paper
+      sx={{
+        p: 2.5,
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: alpha(theme.palette.divider, 0.1),
+        transition: 'all 0.3s ease',
+        cursor: 'pointer',
+        '&:hover': {
+          borderColor: theme.palette.primary.main,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+          transform: 'translateY(-2px)',
+        },
+        background: 'white',
+      }}
+      onClick={() => handleViewContract(contract)}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+        <Box>
+          <Typography 
+            variant="subtitle1" 
+            sx={{ 
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 600,
+              color: 'text.primary',
+              mb: 0.5,
+            }}
+          >
+            {contract.contract_type || 'Unknown'}
+          </Typography>
+          {contract.contract_subtype && (
+            <Chip
+              label={contract.contract_subtype}
+              size="small"
+              sx={{
+                height: 20,
+                fontSize: '0.7rem',
+                fontFamily: "'Inter', sans-serif",
+                background: alpha(theme.palette.primary.main, 0.1),
+                color: theme.palette.primary.main,
+              }}
+            />
+          )}
+        </Box>
+        <Chip
+          label={getRiskLabel(contract.risk_score)}
+          size="small"
+          sx={{
+            background: getRiskGradient(contract.risk_score),
+            color: 'white',
+            fontWeight: 600,
+            fontFamily: "'Inter', sans-serif",
+            height: 24,
+          }}
+        />
+      </Box>
+
+      <Typography 
+        variant="body2" 
+        sx={{ 
+          color: 'text.secondary',
+          fontFamily: "'Inter', sans-serif",
+          fontWeight: 400,
+          mb: 2,
+          lineHeight: 1.5,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}
+      >
+        {contract.parties?.join(' • ') || 'No parties specified'}
+      </Typography>
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box>
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              color: 'text.secondary',
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 500,
+              display: 'block',
+            }}
+          >
+            Value
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 600,
+              color: 'text.primary',
+            }}
+          >
+            {formatCurrency(contract.total_value, contract.currency)}
+          </Typography>
+        </Box>
+        <Box>
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              color: 'text.secondary',
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 500,
+              display: 'block',
+            }}
+          >
+            Expires
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 400,
+              color: 'text.primary',
+            }}
+          >
+            {formatDate(contract.expiration_date)}
+          </Typography>
+        </Box>
+      </Box>
+
+      <Divider sx={{ my: 1.5 }} />
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 28, height: 28, fontSize: '0.8rem' } }}>
+          {contract.parties?.slice(0, 3).map((party, idx) => (
+            <Avatar 
+              key={idx}
+              sx={{ 
+                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                color: theme.palette.primary.main,
+                fontWeight: 500,
+              }}
+            >
+              {party.charAt(0).toUpperCase()}
+            </Avatar>
+          ))}
+        </AvatarGroup>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <IconButton 
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCompareSelect(contract);
+            }}
+            sx={{ 
+              width: 32, 
+              height: 32,
+              background: selectedForCompare.some(c => c.id === contract.id) 
+                ? alpha(theme.palette.primary.main, 0.1) 
+                : alpha(theme.palette.action.hover, 0.5),
+            }}
+          >
+            <Compare sx={{ fontSize: 16 }} />
+          </IconButton>
+          <IconButton 
+            size="small"
+            sx={{ 
+              width: 32, 
+              height: 32,
+              background: alpha(theme.palette.action.hover, 0.5),
+            }}
+          >
+            <MoreVert sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Box>
+      </Box>
+    </Paper>
+  );
+
   if (loading) {
-    return <LinearProgress />;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+        <Box sx={{ width: '60%', maxWidth: 400 }}>
+          <LinearProgress sx={{ height: 4, borderRadius: 2 }} />
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              mt: 2, 
+              textAlign: 'center',
+              fontFamily: "'Inter', sans-serif",
+              color: 'text.secondary',
+            }}
+          >
+            Loading contract intelligence...
+          </Typography>
+        </Box>
+      </Box>
+    );
   }
 
   if (!summary) {
-    return <Alert severity="warning">No data available</Alert>;
+    return (
+      <Alert 
+        severity="warning"
+        sx={{ 
+          m: 3, 
+          borderRadius: 2,
+          fontFamily: "'Inter', sans-serif",
+        }}
+      >
+        No contract data available. Upload your first contract to begin analysis.
+      </Alert>
+    );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, background: '#f8fafc', minHeight: '100vh' }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Contract Intelligence Dashboard
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Real-time insights and analytics for your contract portfolio
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box>
+            <Typography 
+              variant="h3" 
+              sx={{ 
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 700,
+                color: 'text.primary',
+                mb: 1,
+              }}
+            >
+              Contract Intelligence
+            </Typography>
+            <Typography 
+              variant="body1" 
+              sx={{ 
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 400,
+                color: 'text.secondary',
+                maxWidth: 600,
+              }}
+            >
+              Real-time insights and analytics for your contract portfolio. Monitor risks, track expirations, and optimize performance.
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            startIcon={<Download />}
+            sx={{
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 600,
+              textTransform: 'none',
+              borderRadius: 2,
+              px: 3,
+              py: 1,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              boxShadow: '0 4px 14px 0 rgba(102, 126, 234, 0.39)',
+              '&:hover': {
+                boxShadow: '0 6px 20px rgba(102, 126, 234, 0.5)',
+              },
+            }}
+          >
+            Export Report
+          </Button>
+        </Box>
+        
+        {/* Stats Cards */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <StatCard
+              title="Portfolio Value"
+              value={formatCurrency(summary.total_value, 'USD')}
+              change={12.5}
+              icon={<AttachMoney />}
+              color="#667eea"
+              subtitle={`Across ${summary.total_contracts} contracts`}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <StatCard
+              title="High Risk"
+              value={summary.high_risk}
+              change={-3.2}
+              icon={<Warning />}
+              color="#ff4444"
+              subtitle={`${((summary.high_risk / summary.total_contracts) * 100).toFixed(1)}% of portfolio`}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <StatCard
+              title="Expiring Soon"
+              value={summary.expiring_soon}
+              change={8.7}
+              icon={<Schedule />}
+              color="#ffaa00"
+              subtitle="Within next 90 days"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <StatCard
+              title="Needs Review"
+              value={summary.needs_review}
+              change={15.3}
+              icon={<Gavel />}
+              color="#764ba2"
+              subtitle="Pending legal review"
+            />
+          </Grid>
+        </Grid>
       </Box>
 
-      {/* KPI Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <MonetizationOn color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6">Total Value</Typography>
+      {/* Main Content Area */}
+      <Grid container spacing={3}>
+        {/* Left Column - Contracts List */}
+        <Grid item xs={12} lg={8}>
+          <Card 
+            sx={{ 
+              borderRadius: 2,
+              border: 'none',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+              background: 'white',
+              height: '100%',
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography 
+                  variant="h6" 
+                  sx={{ 
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                  }}
+                >
+                  Recent Contracts
+                  <Typography 
+                    component="span" 
+                    sx={{ 
+                      ml: 1,
+                      color: 'text.secondary',
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 400,
+                    }}
+                  >
+                    ({filteredContracts.length})
+                  </Typography>
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    startIcon={<FilterList />}
+                    sx={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 500,
+                      textTransform: 'none',
+                      color: 'text.secondary',
+                    }}
+                  >
+                    Filter
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<BarChart />}
+                    sx={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 500,
+                      textTransform: 'none',
+                      borderRadius: 2,
+                    }}
+                    onClick={fetchDashboardData}
+                  >
+                    Refresh
+                  </Button>
+                </Box>
               </Box>
-              <Typography variant="h4" gutterBottom>
-                {formatCurrency(summary.total_value, 'USD')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Across {summary.total_contracts} contracts
-              </Typography>
+
+              {/* Search Bar */}
+              <Paper
+                component="form"
+                sx={{
+                  p: '2px 4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  mb: 3,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: alpha(theme.palette.divider, 0.2),
+                  background: alpha(theme.palette.background.paper, 0.6),
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Search sx={{ ml: 1, color: 'text.secondary' }} />
+                <TextField
+                  fullWidth
+                  placeholder="Search contracts by type, party, or keywords..."
+                  variant="standard"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  InputProps={{
+                    disableUnderline: true,
+                    sx: {
+                      ml: 1,
+                      fontFamily: "'Inter', sans-serif",
+                    }
+                  }}
+                />
+              </Paper>
+
+              {/* Contracts Grid */}
+              {filteredContracts.length === 0 ? (
+                <Alert 
+                  severity="info" 
+                  sx={{ 
+                    fontFamily: "'Inter', sans-serif",
+                    borderRadius: 2,
+                  }}
+                >
+                  {searchQuery ? 'No contracts match your search criteria.' : 'No contracts available.'}
+                </Alert>
+              ) : (
+                <Grid container spacing={2}>
+                  {filteredContracts.slice(0, 6).map((contract) => (
+                    <Grid item xs={12} sm={6} md={4} key={contract.id}>
+                      <ContractCard contract={contract} />
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+
+              {/* View All Button */}
+              {filteredContracts.length > 6 && (
+                <Box sx={{ textAlign: 'center', mt: 3 }}>
+                  <Button
+                    variant="text"
+                    sx={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 500,
+                      textTransform: 'none',
+                      color: 'primary.main',
+                    }}
+                  >
+                    View All Contracts →
+                  </Button>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Warning color="warning" sx={{ mr: 1 }} />
-                <Typography variant="h6">High Risk</Typography>
+        {/* Right Column - Analytics & Actions */}
+        <Grid item xs={12} lg={4}>
+          {/* Risk Distribution */}
+          <Card 
+            sx={{ 
+              mb: 3,
+              borderRadius: 2,
+              border: 'none',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+              background: 'white',
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography 
+                variant="h6" 
+                sx={{ 
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  mb: 2,
+                }}
+              >
+                Risk Distribution
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {['High', 'Medium', 'Low'].map((level) => {
+                  const count = {
+                    'High': summary.high_risk,
+                    'Medium': summary.medium_risk || Math.floor(summary.total_contracts * 0.3),
+                    'Low': summary.total_contracts - summary.high_risk - (summary.medium_risk || Math.floor(summary.total_contracts * 0.3))
+                  }[level];
+                  
+                  const percentage = (count / summary.total_contracts) * 100;
+                  const color = {
+                    'High': '#ff4444',
+                    'Medium': '#ffaa00',
+                    'Low': '#00c853'
+                  }[level];
+                  
+                  return (
+                    <Box key={level}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontFamily: "'Inter', sans-serif",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {level} Risk
+                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontFamily: "'Inter', sans-serif",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {count} ({percentage.toFixed(1)}%)
+                        </Typography>
+                      </Box>
+                      <Box sx={{ 
+                        height: 8, 
+                        background: alpha(color, 0.1), 
+                        borderRadius: 4,
+                        overflow: 'hidden',
+                      }}>
+                        <Box 
+                          sx={{ 
+                            width: `${percentage}%`, 
+                            height: '100%', 
+                            background: `linear-gradient(90deg, ${color}, ${alpha(color, 0.8)})`,
+                            borderRadius: 4,
+                          }} 
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })}
               </Box>
-              <Typography variant="h4" gutterBottom color="error">
-                {summary.high_risk}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {summary.total_contracts > 0 ? 
-                  `${((summary.high_risk / summary.total_contracts) * 100).toFixed(1)}% of portfolio` : 
-                  'No contracts'
-                }
-              </Typography>
             </CardContent>
           </Card>
-        </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Schedule color="info" sx={{ mr: 1 }} />
-                <Typography variant="h6">Expiring Soon</Typography>
+          {/* Quick Actions */}
+          <Card 
+            sx={{ 
+              borderRadius: 2,
+              border: 'none',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+              background: 'white',
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Typography 
+                variant="h6" 
+                sx={{ 
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  mb: 2,
+                }}
+              >
+                Quick Actions
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={<CompareArrows />}
+                  sx={{
+                    justifyContent: 'flex-start',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 500,
+                    textTransform: 'none',
+                    py: 1.5,
+                    borderRadius: 2,
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  }}
+                  onClick={handleCompareContracts}
+                  disabled={selectedForCompare.length !== 2 || comparing}
+                >
+                  {comparing ? 'Comparing...' : 'Compare Contracts'}
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<Assessment />}
+                  sx={{
+                    justifyContent: 'flex-start',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 500,
+                    textTransform: 'none',
+                    py: 1.5,
+                    borderRadius: 2,
+                  }}
+                >
+                  Generate Risk Report
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<Timeline />}
+                  sx={{
+                    justifyContent: 'flex-start',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 500,
+                    textTransform: 'none',
+                    py: 1.5,
+                    borderRadius: 2,
+                  }}
+                >
+                  View Analytics
+                </Button>
               </Box>
-              <Typography variant="h4" gutterBottom color="warning">
-                {summary.expiring_soon}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Within next 90 days
-              </Typography>
             </CardContent>
           </Card>
-        </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Gavel color="action" sx={{ mr: 1 }} />
-                <Typography variant="h6">Needs Review</Typography>
-              </Box>
-              <Typography variant="h4" gutterBottom color="warning">
-                {summary.needs_review}
+          {/* Comparison Alert */}
+          {selectedForCompare.length > 0 && (
+            <Alert 
+              severity="info"
+              sx={{ 
+                mt: 3,
+                borderRadius: 2,
+                fontFamily: "'Inter', sans-serif",
+                background: alpha(theme.palette.info.main, 0.1),
+                color: theme.palette.info.dark,
+              }}
+            >
+              <Typography variant="body2" fontWeight={500}>
+                {selectedForCompare.length} contract(s) selected
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Pending legal review
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Comparison Selection Alert */}
-      {selectedForCompare.length > 0 && (
-        <Alert 
-          severity="info" 
-          sx={{ mb: 3 }}
-          action={
-            <Box sx={{ display: 'flex', gap: 1 }}>
               <Button 
                 size="small" 
                 onClick={handleCompareContracts}
-                disabled={selectedForCompare.length !== 2 || comparing}
-                startIcon={<Compare />}
+                disabled={selectedForCompare.length !== 2}
+                sx={{ 
+                  mt: 1,
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 500,
+                }}
               >
-                {comparing ? 'Comparing...' : 'Compare Selected'}
+                Compare Now
               </Button>
-              <Button size="small" onClick={() => setSelectedForCompare([])}>
-                Clear
-              </Button>
-            </Box>
-          }
-        >
-          {selectedForCompare.length} contract(s) selected for comparison. 
-          {selectedForCompare.length === 1 ? ' Select one more to compare.' : ' Ready to compare.'}
-        </Alert>
-      )}
-
-      {/* Search Bar */}
-      <Box sx={{ mb: 3 }}>
-        <Paper sx={{ p: 2 }}>
-          <TextField
-            fullWidth
-            variant="outlined"
-            placeholder="Search contracts by type, party, or ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search />
-                </InputAdornment>
-              ),
-            }}
-          />
-        </Paper>
-      </Box>
-
-      {/* Contract List Section */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
-              All Contracts ({filteredContracts.length})
-            </Typography>
-            <Button 
-              variant="outlined" 
-              size="small"
-              onClick={fetchDashboardData}
-            >
-              Refresh
-            </Button>
-          </Box>
-          <Divider sx={{ mb: 2 }} />
-          
-          {filteredContracts.length === 0 ? (
-            <Alert severity="info">
-              {searchQuery ? 'No contracts match your search.' : 'No contracts found.'}
             </Alert>
-          ) : (
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Contract Type</TableCell>
-                    <TableCell>Parties</TableCell>
-                    <TableCell>Value</TableCell>
-                    <TableCell>Signatories</TableCell>
-                    <TableCell>Effective Date</TableCell>
-                    <TableCell>Expiration Date</TableCell>
-                    <TableCell>Risk Level</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredContracts.map((contract) => (
-                    <TableRow key={contract.id} hover>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
-                          {contract.contract_type || 'Unknown'}
-                        </Typography>
-                        {contract.contract_subtype && (
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            {contract.contract_subtype}
-                          </Typography>
-                        )}
-                        {contract.master_agreement_id && (
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            ID: {contract.master_agreement_id}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                          {contract.parties?.slice(0, 2).map((party, idx) => (
-                            <Typography key={idx} variant="body2">
-                              {party}
-                            </Typography>
-                          ))}
-                          {contract.parties?.length > 2 && (
-                            <Typography variant="caption" color="text.secondary">
-                              +{contract.parties.length - 2} more
-                            </Typography>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
-                          {formatCurrency(contract.total_value, contract.currency)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        {contract.signatories && contract.signatories.length > 0 ? (
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                            {contract.signatories.slice(0, 2).map((sig, idx) => (
-                              <Typography key={idx} variant="body2">
-                                {sig.name}
-                              </Typography>
-                            ))}
-                            {contract.signatories.length > 2 && (
-                              <Typography variant="caption" color="text.secondary">
-                                +{contract.signatories.length - 2} more
-                              </Typography>
-                            )}
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">
-                            No signatories
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {formatDate(contract.effective_date)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {formatDate(contract.expiration_date)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={getRiskLabel(contract.risk_score)}
-                          color={getRiskColor(contract.risk_score)}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {contract.needs_review ? (
-                          <Chip label="Needs Review" color="warning" size="small" />
-                        ) : (
-                          <Chip label="Reviewed" color="success" size="small" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Tooltip title="View Details">
-                            <IconButton 
-                              size="small"
-                              onClick={() => handleViewContract(contract)}
-                            >
-                              <Visibility fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={
-                            selectedForCompare.some(c => c.id === contract.id) 
-                              ? "Selected for comparison" 
-                              : "Compare with another contract"
-                          }>
-                            <IconButton 
-                              size="small"
-                              onClick={() => handleCompareSelect(contract)}
-                              color={
-                                selectedForCompare.some(c => c.id === contract.id) 
-                                  ? "primary" 
-                                  : "default"
-                              }
-                            >
-                              <Compare fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Contract Type Distribution */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Contract Types Distribution
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {Object.entries(summary.by_type).map(([type, count]) => (
-                  <Box key={type} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="body2">{type || 'Unknown'}</Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        {count} contracts
-                      </Typography>
-                      <Chip
-                        label={`${((count / summary.total_contracts) * 100).toFixed(1)}%`}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Contract Status Overview
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Box sx={{ textAlign: 'center', p: 2 }}>
-                    <CheckCircle color="success" sx={{ fontSize: 48, mb: 1 }} />
-                    <Typography variant="h4">{summary.by_status.active || 0}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Active
-                    </Typography>
-                  </Box>
-                </Grid>
-                <Grid item xs={6}>
-                  <Box sx={{ textAlign: 'center', p: 2 }}>
-                    <Error color="error" sx={{ fontSize: 48, mb: 1 }} />
-                    <Typography variant="h4">{summary.by_status.expired || 0}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Expired
-                    </Typography>
-                  </Box>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
         </Grid>
       </Grid>
 
@@ -560,16 +979,41 @@ const ContractDashboard = () => {
         onClose={() => setDetailDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            background: '#f8fafc',
+          }
+        }}
       >
         {selectedContract && (
           <>
-            <DialogTitle>
-              Contract Details
-              <Typography variant="body2" color="text.secondary">
+            <DialogTitle sx={{ 
+              borderBottom: '1px solid',
+              borderColor: alpha(theme.palette.divider, 0.1),
+              pb: 2,
+            }}>
+              <Typography 
+                variant="h5" 
+                sx={{ 
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                }}
+              >
+                Contract Details
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  fontFamily: "'Inter', sans-serif",
+                  color: 'text.secondary',
+                  mt: 0.5,
+                }}
+              >
                 {selectedContract.contract_type || 'Unknown'}
               </Typography>
             </DialogTitle>
-            <DialogContent>
+            <DialogContent sx={{ mt: 2 }}>
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12} md={6}>
                   <Paper sx={{ p: 2 }}>
@@ -742,20 +1186,44 @@ const ContractDashboard = () => {
         onClose={clearComparison}
         maxWidth="lg"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            background: '#f8fafc',
+          }
+        }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid',
+          borderColor: alpha(theme.palette.divider, 0.1),
+          pb: 2,
+        }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Compare />
-            <Typography>Contract Comparison</Typography>
+            <CompareArrows />
+            <Typography 
+              variant="h5" 
+              sx={{ 
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 600,
+              }}
+            >
+              Contract Comparison
+            </Typography>
           </Box>
           {comparisonResult && (
-            <Typography variant="body2" color="text.secondary">
-              Comparing: {comparisonResult.contract1.contract_type} (v{comparisonResult.contract1.version}) 
-              vs {comparisonResult.contract2.contract_type} (v{comparisonResult.contract2.version})
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                fontFamily: "'Inter', sans-serif",
+                color: 'text.secondary',
+                mt: 0.5,
+              }}
+            >
+              Comparing: {comparisonResult.contract1.contract_type} vs {comparisonResult.contract2.contract_type}
             </Typography>
           )}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ mt: 2 }}>
           {comparing ? (
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <LinearProgress sx={{ mb: 2 }} />

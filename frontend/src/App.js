@@ -11,11 +11,12 @@ import {
   Alert,
 } from '@mui/material';
 import EnhancedDocumentUpload from './components/EnhancedDocumentUpload';
-import ContractList from './components/ContractList';
-import ContractDetail from './components/ContractDetail';
-import ContractDashboard from './components/ContractDashboard';
+import ContractList from './components/contract-list/ContractList'; // Updated import path
+// import ContractDetail from './components/ContractDetail';
+import ContractDetail from './components/contract-detail/ContractDetail';
 import AmendmentUpload from './components/AmendmentUpload';
-import { getContracts } from './services/api';
+import { getContracts, getContractSummary, compareContracts } from './services/api';
+import DashboardLayout from './components/dashboard/DashboardLayout';
 
 function App() {
   const [activeTab, setActiveTab] = useState(0);
@@ -23,81 +24,124 @@ function App() {
   const [refreshList, setRefreshList] = useState(false);
   const [existingContracts, setExistingContracts] = useState([]);
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [selectedForCompare, setSelectedForCompare] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Load existing contracts for amendment selection
   useEffect(() => {
-    fetchExistingContracts();
+    fetchDashboardData();
   }, [refreshList]);
 
-  const fetchExistingContracts = async () => {
+  const fetchDashboardData = async () => {
+    setLoading(true);
     try {
-      const contracts = await getContracts(0, 50);
-      setExistingContracts(contracts);
+      const [summaryData, contractsData] = await Promise.all([
+        getContractSummary(),
+        getContracts(0, 50)
+      ]);
+      setSummary(summaryData);
+      setExistingContracts(contractsData);
     } catch (error) {
-      console.error('Error fetching contracts:', error);
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleTabChange = (event, newValue) => {
-      // Prevent switching away from upload tab if processing
-      if (isProcessingUpload && newValue !== 1) {
-          alert('Please wait for document processing to complete before switching tabs.');
-          return;
-      }
-      setActiveTab(newValue);
-      if (newValue !== 4) {
-          setSelectedContractId(null);
-      }
+    if (isProcessingUpload && newValue !== 1) {
+      alert('Please wait for document processing to complete before switching tabs.');
+      return;
+    }
+    setActiveTab(newValue);
+    if (newValue !== 4) {
+      setSelectedContractId(null);
+    }
   };
 
   const handleUploadStart = () => {
     setIsProcessingUpload(true);
-    // Don't change tabs - stay on upload tab
   };
 
   const handleUploadSuccess = (result) => {
     console.log('Upload completed successfully:', result);
     setIsProcessingUpload(false);
     setRefreshList(!refreshList);
-    // Wait a bit before switching tabs to show completion message
     setTimeout(() => {
-      setActiveTab(3); // Go to Contract List tab
+      setActiveTab(3);
     }, 500);
   };
 
   const handleUploadError = () => {
     setIsProcessingUpload(false);
-    // Stay on upload tab to show error
   };
 
   const handleSelectContract = (contract) => {
     setSelectedContractId(contract.id);
-    setActiveTab(4); // Go to Contract Details tab
+    setActiveTab(4);
   };
 
   const handleReviewUpdate = () => {
     setRefreshList(!refreshList);
   };
 
-  return (
+  const handleCompareSelect = (contract) => {
+    if (selectedForCompare.some(c => c.id === contract.id)) {
+      setSelectedForCompare(selectedForCompare.filter(c => c.id !== contract.id));
+    } else if (selectedForCompare.length < 2) {
+      setSelectedForCompare([...selectedForCompare, contract]);
+    }
+  };
+
+  const handleCompareContracts = async () => {
+    if (selectedForCompare.length !== 2) return;
+    
+    try {
+      const result = await compareContracts(
+        selectedForCompare[0].id, 
+        selectedForCompare[1].id
+      );
+      console.log('Comparison result:', result);
+      // Handle comparison result display
+      alert('Comparison complete! Check console for details.');
+    } catch (error) {
+      console.error('Error comparing contracts:', error);
+      alert('Failed to compare contracts');
+    }
+  };
+
+  const handleClearComparison = () => {
+    setSelectedForCompare([]);
+  };
+
+  const handleRemoveFromComparison = (contractId) => {
+    setSelectedForCompare(selectedForCompare.filter(c => c.id !== contractId));
+  };
+
+ return (
     <>
       <CssBaseline />
-      <AppBar position="static">
+      <AppBar position="static" elevation={0} sx={{ bgcolor: '#1a237e' }}>
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Enterprise Contract Intelligence Platform
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
+            Contract Intelligence Platform
           </Typography>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Typography variant="body2" sx={{ opacity: 0.8 }}>
+              v2.1.0
+            </Typography>
+          </Box>
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="xl">
-        {isProcessingUpload && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Please wait while we process your contract. Do not navigate away from this page.
-          </Alert>
-        )}
+      {isProcessingUpload && (
+        <Alert severity="info" sx={{ mb: 2, borderRadius: 0 }}>
+          Please wait while we process your contract. Do not navigate away from this page.
+        </Alert>
+      )}
 
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Container maxWidth="xl">
           <Tabs 
             value={activeTab} 
             onChange={handleTabChange}
@@ -115,9 +159,25 @@ function App() {
               disabled={!selectedContractId || isProcessingUpload}
             />
           </Tabs>
-        </Box>
+        </Container>
+      </Box>
 
-        {activeTab === 0 && <ContractDashboard />}
+      <Container maxWidth="xl">
+        {activeTab === 0 && (
+          <DashboardLayout
+            title="Contract Intelligence Dashboard"
+            subtitle="Real-time insights and analytics for your contract portfolio"
+            summary={summary}
+            contracts={existingContracts}
+            loading={loading}
+            onRefresh={fetchDashboardData}
+            onViewContract={handleSelectContract}
+            onCompareContracts={handleCompareContracts}
+            selectedForCompare={selectedForCompare}
+            onClearComparison={handleClearComparison}
+            onRemoveFromComparison={handleRemoveFromComparison}
+          />
+        )}
         {activeTab === 1 && (
           <EnhancedDocumentUpload 
             onUploadStart={handleUploadStart}
@@ -147,6 +207,7 @@ function App() {
       </Container>
     </>
   );
+
 }
 
 export default App;
