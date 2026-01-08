@@ -65,10 +65,10 @@ const PartiesCard = ({ parties = [] }) => (
 
 const DatesCard = ({ dates }) => {
   const dateFields = [
-    { label: 'Effective Date', value: dates.effective_date, icon: '✓' },
-    { label: 'Expiration Date', value: dates.expiration_date, icon: '⏰' },
-    { label: 'Execution Date', value: dates.execution_date, icon: '✍️' },
-    { label: 'Termination Date', value: dates.termination_date, icon: '✗' },
+    { label: 'Effective Date', value: dates.effective_date },
+    { label: 'Expiration Date', value: dates.expiration_date },
+    { label: 'Execution Date', value: dates.execution_date },
+    { label: 'Termination Date', value: dates.termination_date },
   ];
 
   return (
