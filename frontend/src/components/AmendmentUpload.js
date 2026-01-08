@@ -39,6 +39,10 @@ const AmendmentUpload = ({ onUploadSuccess }) => {
   const [amendmentType, setAmendmentType] = useState('modification');
   const [uploading, setUploading] = useState(false);
   const [existingContracts, setExistingContracts] = useState([]);
+  // const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadCompleted, setUploadCompleted] = useState(false);
 
   // Load existing contracts on component mount
   React.useEffect(() => {
@@ -75,21 +79,44 @@ const AmendmentUpload = ({ onUploadSuccess }) => {
     setActiveStep((prevStep) => prevStep - 1);
   };
 
-  const handleUpload = async () => {
-    if (!selectedFiles.length || !parentContract) return;
+const handleUpload = async () => {
+  if (!selectedFiles.length || !parentContract) return;
 
-    setUploading(true);
-    try {
-      for (const file of selectedFiles) {
-        const metadata = {
-          is_amendment: true,
-          parent_document_id: parentContract.id,
-          amendment_type: amendmentType,
-        };
-        
-        await uploadDocumentWithMetadata(file, metadata);
-      }
+  setUploading(true);
+  setUploadCompleted(false);
+  setUploadStatus('Starting upload...');
+  setProgress(10);
+  
+  try {
+    let completedFiles = 0;
+    const totalFiles = selectedFiles.length;
+    
+    for (const file of selectedFiles) {
+      setUploadStatus(`Uploading ${file.name}... (${completedFiles + 1}/${totalFiles})`);
+      setProgress((completedFiles / totalFiles) * 30 + 10);
       
+      const metadata = {
+        is_amendment: true,
+        parent_document_id: parentContract.id,
+        amendment_type: amendmentType,
+      };
+      
+      setUploadStatus(`Processing ${file.name}...`);
+      setProgress((completedFiles / totalFiles) * 30 + 40);
+      
+      await uploadDocumentWithMetadata(file, metadata);
+      completedFiles++;
+      
+      setUploadStatus(`Processed ${completedFiles}/${totalFiles} files`);
+      setProgress((completedFiles / totalFiles) * 30 + 70);
+    }
+    
+    setUploadStatus('Finalizing...');
+    setProgress(100);
+    setUploadCompleted(true);
+    
+    // Show success message for 3 seconds
+    setTimeout(() => {
       setUploading(false);
       if (onUploadSuccess) {
         onUploadSuccess();
@@ -99,15 +126,19 @@ const AmendmentUpload = ({ onUploadSuccess }) => {
       setSelectedFiles([]);
       setParentContract(null);
       setActiveStep(0);
+      setUploadStatus('');
+      setProgress(0);
+      setUploadCompleted(false);
       
-      alert('Amendment(s) uploaded successfully!');
-      
-    } catch (error) {
-      console.error('Upload error:', error);
-      setUploading(false);
-      alert(`Upload failed: ${error.message}`);
-    }
-  };
+    }, 3000);
+    
+  } catch (error) {
+    console.error('Upload error:', error);
+    setUploading(false);
+    setUploadStatus(`Error: ${error.message}`);
+    alert(`Upload failed: ${error.message}`);
+  }
+};
 
   const steps = [
     {
@@ -296,41 +327,66 @@ const AmendmentUpload = ({ onUploadSuccess }) => {
                 </Box>
               )}
 
-              {index === 3 && (
-                <Box>
-                  <Alert severity="warning" sx={{ mb: 3 }}>
-                    <Typography variant="subtitle2">Ready to Upload</Typography>
-                    <Typography variant="body2">
-                      You are about to upload {selectedFiles.length} amendment file(s) as {amendmentType} to:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {parentContract?.contract_type} (v{parentContract?.version})
-                    </Typography>
-                  </Alert>
+             {index === 3 && (
+  <Box>
+    {uploading && (
+      <Card sx={{ mb: 3, bgcolor: 'info.50' }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1" fontWeight="medium">
+              {uploadCompleted ? 'Upload Complete!' : 'Processing Amendments...'}
+            </Typography>
+            <Typography variant="body2" color="primary">
+              {progress}% Complete
+            </Typography>
+          </Box>
+          <LinearProgress variant="determinate" value={progress} sx={{ mb: 2, height: 8, borderRadius: 4 }} />
+          <Typography variant="body2" color="text.secondary">
+            {uploadStatus}
+          </Typography>
+          {uploadCompleted && (
+            <Alert severity="success" sx={{ mt: 2 }}>
+              Amendments uploaded successfully! Preparing for comparison...
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+    )}
+    
+    <Alert severity="warning" sx={{ mb: 3 }}>
+      <Typography variant="subtitle2">Ready to Upload</Typography>
+      <Typography variant="body2">
+        You are about to upload {selectedFiles.length} amendment file(s) as {amendmentType} to:
+      </Typography>
+      <Typography variant="body2" fontWeight="bold">
+        {parentContract?.contract_type} (v{parentContract?.version})
+      </Typography>
+    </Alert>
 
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Button
-                      variant="contained"
-                      onClick={handleUpload}
-                      disabled={uploading}
-                      startIcon={uploading ? null : <CloudUpload />}
-                    >
-                      {uploading ? 'Uploading...' : 'Upload Amendments'}
-                    </Button>
-                    
-                    <Button
-                      variant="outlined"
-                      onClick={() => {
-                        // Preview comparison
-                        console.log('Preview comparison');
-                      }}
-                      startIcon={<CompareArrows />}
-                    >
-                      Preview Comparison
-                    </Button>
-                  </Box>
-                </Box>
-              )}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Button
+        variant="contained"
+        onClick={handleUpload}
+        disabled={uploading}
+        startIcon={uploading ? null : <CloudUpload />}
+      >
+        {uploading ? 'Uploading...' : 'Upload Amendments'}
+      </Button>
+      
+      <Button
+        variant="outlined"
+        onClick={() => {
+          // Preview comparison
+          console.log('Preview comparison');
+        }}
+        startIcon={<CompareArrows />}
+        disabled={uploading}
+      >
+        Preview Comparison
+      </Button>
+    </Box>
+  </Box>
+)}
 
               <Box sx={{ mt: 2 }}>
                 <Button

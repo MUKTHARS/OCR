@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 from enum import Enum
@@ -15,6 +15,21 @@ class Signatory(BaseModel):
     title: str
     email: Optional[str] = None
     signature_date: Optional[datetime] = None
+    
+    @field_validator('signature_date', mode='before')
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                # Try ISO format first
+                if "T" in v or " " in v:
+                    return datetime.fromisoformat(v.replace('Z', '+00:00'))
+                # Try date-only format (YYYY-MM-DD)
+                return datetime.strptime(v, "%Y-%m-%d")
+            except (ValueError, AttributeError) as e:
+                print(f"Date parsing error for '{v}': {e}")
+                return None
+        return v
 
 class Contact(BaseModel):
     type: str
@@ -100,6 +115,18 @@ class ContractResponse(ContractCreate):
     change_summary: Optional[str] = None
     amendment_count: Optional[int] = 0
     risk_level: Optional[str] = None
+    
+    @field_validator('extraction_date', mode='before')
+    @classmethod
+    def parse_extraction_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "T" in v or " " in v:
+                    return datetime.fromisoformat(v.replace('Z', '+00:00'))
+                return datetime.strptime(v, "%Y-%m-%d")
+            except (ValueError, AttributeError):
+                return None
+        return v
     
     class Config:
         from_attributes = True

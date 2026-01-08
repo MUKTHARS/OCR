@@ -266,7 +266,6 @@ async def advanced_search(
         "contracts": contracts
     }
 
-# Update the existing process_document_async function
 def process_document_async(document_id: int, file_content: bytes, db: Session, 
                           is_amendment: bool = False, parent_document_id: Optional[int] = None):
     """Enhanced async processing with versioning"""
@@ -492,7 +491,8 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                 confidence_score=extraction.get("confidence_score", 0.0),
                 version=version,
                 previous_version_id=previous_contract.id if previous_contract else None,
-                change_summary=f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction"
+                change_summary=f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction",
+                needs_review=True,
             )
 
             local_db.add(contract)
@@ -547,7 +547,7 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
         print(f"Outer error in async processing: {str(e)}")
         import traceback
         traceback.print_exc()
-
+        
 # Update the upload endpoint to handle amendments
 @app.post("/upload", response_model=schemas.DocumentResponse)
 async def upload_document(
@@ -881,3 +881,30 @@ def generate_suggested_actions(comparison):
         actions.append("No critical actions required")
     
     return actions
+
+@app.get("/documents/{document_id}/status")
+async def get_document_status(
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get document processing status"""
+    document = db.query(models.Document)\
+        .filter(models.Document.id == document_id)\
+        .first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Check if contract exists for this document
+    contract = db.query(models.Contract)\
+        .filter(models.Contract.document_id == document_id)\
+        .first()
+    
+    return {
+        "document_id": document.id,
+        "status": document.status,
+        "is_completed": document.status == "completed",
+        "has_contract": contract is not None,
+        "contract_id": contract.id if contract else None,
+        "upload_date": document.upload_date
+    }    

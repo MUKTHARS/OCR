@@ -114,3 +114,8 @@ export const compareContracts = async (contractId1, contractId2) => {
   });
   return response.data;
 };
+
+export const getDocumentStatus = async (documentId) => {
+    const response = await api.get(`/documents/${documentId}/status`);
+    return response.data;
+};

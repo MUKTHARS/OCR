@@ -246,45 +246,7 @@ class ContractProcessor:
         text_lower = text.lower()
         return any(keyword in text_lower for keyword in signature_keywords)
     
-    # def process_contract(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
-    #     """Process contract text using OpenAI with enhanced extraction"""
-    #     try:
-    #         # Prepare enhanced context
-    #         context = f"""
-    #         Document Metadata:
-    #         - Pages: {metadata.get('page_count', 'Unknown') if metadata else 'Unknown'}
-    #         - Extraction Quality: {'High' if len(text) > 1000 else 'Low'}
-            
-    #         Contract Text:
-    #         {text[:20000]}  # Increased limit for detailed extraction
-    #         """
-            
-    #         response = client.chat.completions.create(
-    #             model="gpt-4-turbo-preview",
-    #             messages=[
-    #                 {"role": "system", "content": self.system_prompt},
-    #                 {"role": "user", "content": context}
-    #             ],
-    #             temperature=0.1,
-    #             max_tokens=4000,
-    #             response_format={"type": "json_object"}
-    #         )
-            
-    #         result = json.loads(response.choices[0].message.content)
-            
-    #         # Calculate risk score based on extracted factors
-    #         result["risk_score"] = self._calculate_risk_score(result)
-            
-    #         # Add metadata
-    #         if metadata:
-    #             result["metadata"] = {**result.get("metadata", {}), **metadata}
-            
-    #         return result
-            
-    #     except Exception as e:
-    #         print(f"Error processing contract: {e}")
-    #         return self._get_fallback_extraction()
-    
+        
     def _calculate_risk_score(self, extraction: Dict[str, Any]) -> float:
         """Calculate risk score based on extracted factors"""
         risk_score = 0.0
@@ -296,20 +258,27 @@ class ContractProcessor:
                 if any(risk_term in clause.lower() for risk_term in high_risk_clauses):
                     risk_score += 0.1
         
-        # Check dates
+        # Check dates with better error handling
         dates = extraction.get("dates", {})
         if dates.get("expiration_date"):
             try:
-                exp_date = datetime.fromisoformat(dates["expiration_date"].replace('Z', '+00:00'))
+                exp_date_str = dates["expiration_date"]
+                # Handle various date formats
+                if "T" in exp_date_str:
+                    exp_date = datetime.fromisoformat(exp_date_str.replace('Z', '+00:00'))
+                else:
+                    # Handle date-only format (YYYY-MM-DD)
+                    exp_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
+                
                 days_remaining = (exp_date - datetime.now()).days
                 if days_remaining < 90:  # Expiring soon
                     risk_score += 0.2
                 if days_remaining < 30:  # Expiring very soon
                     risk_score += 0.3
             except Exception as e:
-                print(f"Error parsing expiration date: {e}")
+                print(f"Error parsing expiration date '{dates.get('expiration_date')}': {e}")
         
-        # Check financial terms - FIXED: Handle string values
+        # Check financial terms
         financial = extraction.get("financial", {})
         total_value = financial.get("total_value", 0)
         
