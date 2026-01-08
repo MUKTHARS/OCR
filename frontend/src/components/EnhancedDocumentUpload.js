@@ -377,12 +377,7 @@ const EnhancedDocumentUpload = ({ onUploadSuccess, existingContracts = [] }) => 
         <Typography variant="body1" color={uploading ? 'text.disabled' : 'text.secondary'} gutterBottom>
           {uploading ? 'Please wait while we process your document' : 'Drag & drop or click to browse. Supports PDF documents.'}
         </Typography>
-        {!uploading && (
-          <Alert severity="info" sx={{ mt: 2, textAlign: 'left' }}>
-            <strong>Enterprise Features:</strong> Automatic amendment detection, version tracking, 
-            detailed extraction of financial terms, risk analysis, and compliance monitoring.
-          </Alert>
-        )}
+        
       </Paper>
 
       {/* Processing Status */}
