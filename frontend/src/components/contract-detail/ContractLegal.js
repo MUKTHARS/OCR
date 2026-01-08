@@ -18,9 +18,9 @@ const LegalTermsCard = ({ contract }) => {
   const legalItems = [
     { label: 'Governing Law', value: contract.governing_law, icon: <BalanceOutlined fontSize="small" /> },
     { label: 'Jurisdiction', value: contract.jurisdiction, icon: <GavelOutlined fontSize="small" /> },
-    { label: 'Auto Renewal', value: contract.auto_renewal ? 'Yes' : 'No', icon: '🔄' },
-    { label: 'Renewal Notice', value: contract.renewal_notice_period ? `${contract.renewal_notice_period} days` : 'Not specified', icon: '📅' },
-    { label: 'Termination Notice', value: contract.termination_notice_period ? `${contract.termination_notice_period} days` : 'Not specified', icon: '⚠️' },
+    { label: 'Auto Renewal', value: contract.auto_renewal ? 'Yes' : 'No' },
+    { label: 'Renewal Notice', value: contract.renewal_notice_period ? `${contract.renewal_notice_period} days` : 'Not specified' },
+    { label: 'Termination Notice', value: contract.termination_notice_period ? `${contract.termination_notice_period} days` : 'Not specified' },
   ];
 
   return (
