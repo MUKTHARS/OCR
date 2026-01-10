@@ -15,6 +15,9 @@ import {
   WarningAmberOutlined,
   ScheduleOutlined,
   GavelOutlined,
+  AccountBalanceOutlined,
+  PaidOutlined,
+  PendingActionsOutlined,
 } from '@mui/icons-material';
 
 const KPICard = ({ 
@@ -129,7 +132,63 @@ const KPICard = ({
   );
 };
 
-const KPICards = ({ summary, loading }) => {
+const KPICards = ({ summary, loading, contracts = [] }) => {
+  // Calculate funding metrics from contracts
+  const calculateFundingMetrics = () => {
+    if (!contracts || contracts.length === 0) {
+      return {
+        totalFunding: 0,
+        totalReceived: 0,
+        remainingFunds: 0,
+        utilizationRate: 0,
+      };
+    }
+
+    let totalFunding = 0;
+    let totalReceived = 0;
+    let totalCommitted = 0;
+
+    contracts.forEach(contract => {
+      const totalValue = contract.total_value || 0;
+      totalFunding += totalValue;
+      
+      // Simple logic to calculate received funds
+      // In a real app, this would come from payment schedules
+      if (contract.extracted_metadata?.payment_schedule) {
+        const schedule = contract.extracted_metadata.payment_schedule;
+        if (Array.isArray(schedule)) {
+          schedule.forEach(item => {
+            if (item.amount) {
+              const amount = typeof item.amount === 'string' 
+                ? parseFloat(item.amount.replace(/[^0-9.-]+/g, "")) 
+                : item.amount;
+              totalCommitted += amount;
+              if (item.status === 'paid' || item.status === 'completed') {
+                totalReceived += amount;
+              }
+            }
+          });
+        }
+      } else {
+        // Fallback: assume 40% of total value is received
+        totalReceived += totalValue * 0.4;
+        totalCommitted += totalValue;
+      }
+    });
+
+    return {
+      totalFunding,
+      totalReceived,
+      totalCommitted: totalCommitted || totalFunding,
+      remainingFunds: (totalCommitted || totalFunding) - totalReceived,
+      utilizationRate: (totalCommitted || totalFunding) > 0 
+        ? (totalReceived / (totalCommitted || totalFunding)) * 100 
+        : 0,
+    };
+  };
+
+  const fundingMetrics = calculateFundingMetrics();
+
   const cards = [
     {
       title: 'Total Portfolio Value',
@@ -141,6 +200,53 @@ const KPICards = ({ summary, loading }) => {
       subtitle: `Across ${summary?.total_contracts || 0} contracts`,
     },
     {
+      title: 'Total Funding',
+      value: fundingMetrics.totalFunding,
+      change: 12.5,
+      icon: AccountBalanceOutlined,
+      color: 'primary',
+      format: 'currency',
+      subtitle: `Across ${contracts.length} grants`,
+    },
+    {
+      title: 'Funds Received',
+      value: fundingMetrics.totalReceived,
+      change: 8.2,
+      icon: PaidOutlined,
+      color: 'success',
+      format: 'currency',
+      subtitle: `${fundingMetrics.utilizationRate.toFixed(1)}% utilization`,
+    },
+    {
+      title: 'Remaining Funds',
+      value: fundingMetrics.remainingFunds,
+      change: -4.3,
+      icon: PendingActionsOutlined,
+      color: 'warning',
+      format: 'currency',
+      subtitle: 'Pending disbursement',
+    },
+  
+
+    {
+      title: 'Needs Legal Review',
+      value: summary?.needs_review || 0,
+      change: 15.3,
+      icon: GavelOutlined,
+      color: 'info',
+      subtitle: 'Pending attention',
+    },
+    
+    {
+      title: 'Active Grants',
+      value: contracts.filter(c => !c.termination_date).length,
+      change: 5.2,
+      icon: AccountBalanceOutlined,
+      color: 'primary',
+      subtitle: `${contracts.length} total grants`,
+    },
+
+        {
       title: 'High Risk Contracts',
       value: summary?.high_risk || 0,
       change: -4.2,
@@ -157,14 +263,6 @@ const KPICards = ({ summary, loading }) => {
       icon: ScheduleOutlined,
       color: 'warning',
       subtitle: 'Within next 90 days',
-    },
-    {
-      title: 'Needs Legal Review',
-      value: summary?.needs_review || 0,
-      change: 15.3,
-      icon: GavelOutlined,
-      color: 'info',
-      subtitle: 'Pending attention',
     },
   ];
 

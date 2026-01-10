@@ -43,7 +43,7 @@ const DashboardLayout = ({
             onRemoveContract={onRemoveFromComparison}
           />
           
-          <KPICards summary={summary} loading={loading} />
+          <KPICards summary={summary} loading={loading} contracts={contracts} />
           
           <ContractMetrics summary={summary} contracts={contracts} />
           
