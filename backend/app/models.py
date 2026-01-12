@@ -1,5 +1,3 @@
-# C:\saple.ai\OCR\backend\app\models.py
-
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
