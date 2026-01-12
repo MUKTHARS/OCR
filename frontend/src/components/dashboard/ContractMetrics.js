@@ -8,49 +8,44 @@ import {
   Chip,
   IconButton,
   Tooltip,
+  Alert,
+  LinearProgress,
+  Paper,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Avatar,
-  LinearProgress,
-  Alert,
   Badge,
+  Button,
 } from '@mui/material';
 import {
   AssessmentOutlined,
-  PeopleOutlined,
-  DescriptionOutlined,
-  EditNoteOutlined,
   WarningOutlined,
   CheckCircleOutlined,
-  ArrowForwardOutlined,
-  MoreVertOutlined,
   AttachMoneyOutlined,
   CalendarTodayOutlined,
-  PaidOutlined,
-  AccountBalanceOutlined,
   PendingActionsOutlined,
-  TrendingUp,
-  TrendingDown,
+  AccountBalanceOutlined,
+  PaidOutlined,
+  ArrowForwardOutlined,
+  RefreshOutlined,
 } from '@mui/icons-material';
 import { getContracts, getContractVersions } from '../../services/api';
 import RiskDistribution from './RiskDistribution';
-
-const ContractDistribution = ({ summary, contracts: initialContracts }) => {
+const ContractDistribution = ({ summary, contracts: initialContracts, onViewContract }) => {
   const [contracts, setContracts] = useState(initialContracts || []);
   const [loading, setLoading] = useState(false);
   const [contractDetails, setContractDetails] = useState({});
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!initialContracts || initialContracts.length === 0) {
       fetchContracts();
     } else {
       setContracts(initialContracts);
-      // Initialize contract details
       const details = {};
       initialContracts.forEach(contract => {
         details[contract.id] = {
@@ -64,7 +59,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
   }, [initialContracts]);
 
   useEffect(() => {
-    // Fetch version details for each contract
     const fetchContractDetails = async () => {
       const details = {};
       for (const contract of contracts) {
@@ -76,7 +70,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
             versions: versions,
             totalValue: contract.total_value || 0,
             currency: contract.currency || 'USD',
-            // Extract funding information from clauses or key_fields
             fundingInfo: extractFundingInfo(contract),
           };
         } catch (error) {
@@ -99,7 +92,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
     }
   }, [contracts]);
 
-  // Helper function to extract funding information from contract data
   const extractFundingInfo = (contract) => {
     let fundingInfo = {
       totalFunding: contract.total_value || 0,
@@ -110,13 +102,11 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
       disbursementSchedule: [],
     };
 
-    // Check for payment schedule in extracted_metadata
     if (contract.extracted_metadata?.payment_schedule) {
       const schedule = contract.extracted_metadata.payment_schedule;
       if (Array.isArray(schedule)) {
         fundingInfo.disbursementSchedule = schedule;
         
-        // Calculate received funds based on schedule status
         let received = 0;
         let committed = 0;
         
@@ -142,11 +132,9 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
       }
     }
 
-    // Check for financial terms in clauses
     if (contract.clauses && contract.clauses.payment_terms) {
       const paymentClause = contract.clauses.payment_terms;
       if (paymentClause.text) {
-        // Extract received amount from clause text (simple regex matching)
         const receivedMatch = paymentClause.text.match(/\$([0-9,]+(\.[0-9]{2})?)\s+(received|paid)/i);
         if (receivedMatch) {
           const receivedAmount = parseFloat(receivedMatch[1].replace(/,/g, ''));
@@ -159,7 +147,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
     return fundingInfo;
   };
 
-  // Calculate aggregate funding metrics across all contracts
   const calculateFundingMetrics = () => {
     if (contracts.length === 0) return null;
 
@@ -202,10 +189,10 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
   const fetchContracts = async () => {
     setLoading(true);
     try {
-      const data = await getContracts(0, 50);
+      const data = await getContracts(0, 100); // Get up to 100 contracts
+      console.log('Dashboard fetched contracts:', data.length);
       setContracts(data);
       
-      // Initialize contract details
       const details = {};
       data.forEach(contract => {
         details[contract.id] = {
@@ -222,15 +209,19 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
       console.error('Error fetching contracts:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  // Get contract status based on funding and deadlines
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchContracts();
+  };
+
   const getContractStatus = (contract) => {
     const details = contractDetails[contract.id] || {};
     const funding = details.fundingInfo || extractFundingInfo(contract);
     
-    // Check if deadline has passed
     if (funding.deadline) {
       const deadlineDate = new Date(funding.deadline);
       const now = new Date();
@@ -243,7 +234,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
       }
     }
     
-    // Check funding utilization
     if (funding.fundsReceived > 0) {
       if (funding.fundsReceived >= funding.fundsCommitted) {
         return { label: 'Fully Funded', color: 'success' };
@@ -255,7 +245,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
     return { label: 'Not Funded', color: 'default' };
   };
 
-  // Calculate contract metrics
   const calculateContractMetrics = () => {
     if (contracts.length === 0) return null;
 
@@ -270,24 +259,20 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
       return daysDiff > 0 && daysDiff <= 30;
     }).length;
 
-    // Group by contract type
     const byType = {};
     contracts.forEach(contract => {
       const type = contract.contract_type || 'Unknown';
       byType[type] = (byType[type] || 0) + 1;
     });
 
-    // Count total amendments
     const totalAmendments = Object.values(contractDetails).reduce(
       (sum, detail) => sum + (detail.amendmentCount || 0), 0
     );
 
-    // Count total subcontracts
     const totalSubcontracts = Object.values(contractDetails).reduce(
       (sum, detail) => sum + (detail.subcontractCount || 0), 0
     );
 
-    // Calculate funding metrics
     const fundingMetrics = calculateFundingMetrics();
 
     return {
@@ -303,7 +288,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
     };
   };
 
-  // Helper function to calculate days until deadline
   const getDaysUntilDeadline = (dateString) => {
     if (!dateString) return null;
     try {
@@ -316,43 +300,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
     }
   };
 
-  const metrics = calculateContractMetrics();
-
-  if (loading) {
-    return (
-      <Card>
-        <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} />
-            <Typography variant="h6" fontWeight={600}>
-              Grant Portfolio Dashboard
-            </Typography>
-          </Box>
-          <LinearProgress />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (contracts.length === 0) {
-    return (
-      <Card>
-        <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} />
-            <Typography variant="h6" fontWeight={600}>
-              Grant Portfolio Dashboard
-            </Typography>
-          </Box>
-          <Alert severity="info">
-            No grants found. Upload grant agreements to start tracking.
-          </Alert>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Format date for display
   const formatDate = (dateString) => {
     if (!dateString) return 'No deadline';
     try {
@@ -367,7 +314,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
     }
   };
 
-  // Funding Distribution Cards component
   const FundingDistributionCards = () => {
     const fundingMetrics = calculateFundingMetrics();
     
@@ -382,7 +328,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
         </Typography>
         <Grid container spacing={2}>
           {Object.entries(metrics.byType).map(([type, count]) => {
-            // Calculate funding for this contract type
             const typeContracts = contracts.filter(c => c.contract_type === type);
             const typeFunding = typeContracts.reduce((sum, contract) => {
               const details = contractDetails[contract.id] || {};
@@ -390,7 +335,6 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
               return sum + (funding.totalFunding || 0);
             }, 0);
             
-            // Calculate percentage of total funding
             const percentage = fundingMetrics?.totalFunding > 0 
               ? (typeFunding / fundingMetrics.totalFunding) * 100 
               : 0;
@@ -498,104 +442,147 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
     );
   };
 
+  const metrics = calculateContractMetrics();
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+            <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} />
+            <Typography variant="h6" fontWeight={600}>
+              Grant Portfolio Dashboard
+            </Typography>
+          </Box>
+          <LinearProgress />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (contracts.length === 0) {
+    return (
+      <Card>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+            <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} />
+            <Typography variant="h6" fontWeight={600}>
+              Grant Portfolio Dashboard
+            </Typography>
+          </Box>
+          <Alert severity="info">
+            No grants found. Upload grant agreements to start tracking.
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} />
-          <Typography variant="h6" fontWeight={600}>
-            Grant Portfolio Dashboard
-          </Typography>
-          <Chip 
-            label={`${contracts.length} Grants`}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} />
+            <Typography variant="h6" fontWeight={600}>
+              Grant Portfolio Dashboard
+            </Typography>
+            <Chip 
+              label={`${contracts.length} Grants`}
+              size="small"
+              color="primary"
+              sx={{ ml: 2 }}
+            />
+          </Box>
+          
+          <Button
+            variant="outlined"
             size="small"
-            color="primary"
-            sx={{ ml: 2 }}
-          />
+            onClick={handleRefresh}
+            disabled={refreshing}
+            startIcon={<RefreshOutlined />}
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
+        </Box>
+
+        {/* Debug info */}
+        <Box sx={{ 
+          mb: 2, 
+          p: 1, 
+          bgcolor: 'info.50', 
+          borderRadius: 1,
+          border: '1px solid',
+          borderColor: 'info.200'
+        }}>
+          <Typography variant="caption" color="text.secondary">
+            Showing {contracts.length} contracts. Newest: Contract ID {Math.max(...contracts.map(c => c.id))}
+          </Typography>
         </Box>
 
         {/* Funding Distribution Cards */}
         <FundingDistributionCards />
 
-        {/* Grants Table with Funding Information - Hidden scrollbars but functional scrolling */}
-<Box sx={{ 
-  mb: 3,
-  overflow: 'hidden',
-  position: 'relative',
-  borderRadius: '8px', 
-  border: '1px solid', 
-  borderColor: 'divider',
-  // Always allow scroll
-  overflow: 'auto',
-  // Hide scrollbar by default
-  scrollbarWidth: 'none', // Firefox
-  '&::-webkit-scrollbar': {
-    display: 'none', // Chrome, Safari, Edge
-  },
-  // But show scrollbar on hover for better UX
-  '&:hover': {
-    '&::-webkit-scrollbar': {
-      display: 'block',
-      width: '6px',
-      height: '6px',
-    },
-  },
-  '&::-webkit-scrollbar-track': {
-    background: 'transparent',
-  },
-  '&::-webkit-scrollbar-thumb': {
-    background: 'rgba(0,0,0,0.1)',
-    borderRadius: '3px',
-    '&:hover': {
-      background: 'rgba(0,0,0,0.2)',
-    }
-  }
-}}>
-          <TableContainer component={Paper} variant="outlined" sx={{ 
-            borderRadius: 2,
-            width: '100%',
-            overflow: 'visible',
-          }}>
-            <Table size="small" stickyHeader sx={{ 
-  minWidth: 850,
-  tableLayout: 'fixed',
-  // Ensure table doesn't exceed container
-  '& .MuiTableCell-root': {
-    position: 'relative',
-    zIndex: 1, // Keep cells above the scroll area
-  },
-  '& .MuiTableHead-root': {
-    position: 'sticky',
-    top: 0,
-    zIndex: 2, // Keep header above everything
-    backgroundColor: '#fafafa', // Match your table header background
-  },
-}}>
+        {/* Grants Table with Funding Information */}
+        <Box sx={{ 
+          mb: 3,
+          position: 'relative',
+          borderRadius: '8px', 
+          border: '1px solid', 
+          borderColor: 'divider',
+          overflow: 'auto',
+          maxHeight: '500px',
+          scrollbarWidth: 'thin',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+            height: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: '#f1f1f1',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: '#888',
+            borderRadius: '4px',
+            '&:hover': {
+              background: '#555',
+            }
+          }
+        }}>
+          <TableContainer 
+            component={Paper} 
+            variant="outlined" 
+            sx={{ 
+              borderRadius: 2,
+              minWidth: '900px',
+              width: '100%',
+            }}
+          >
+            <Table 
+              size="small" 
+              stickyHeader 
+              sx={{ 
+                width: '100%',
+                tableLayout: 'fixed',
+              }}
+            >
               <colgroup>
-                <col style={{ width: '22%' }} /> {/* Grant / Contract - increased */}
-                <col style={{ width: '14%' }} /> {/* Total Funding - kept wider */}
-                <col style={{ width: '22%' }} /> {/* Received vs Committed */}
-                <col style={{ width: '14%' }} /> {/* Remaining Funds */}
-                <col style={{ width: '12%' }} /> {/* Deadline */}
-                <col style={{ width: '12%' }} /> {/* Status */}
-                {/* <col style={{ width: '4%' }} />  Actions */}
+                <col style={{ width: '22%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '22%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '4%' }} />
               </colgroup>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ 
-                    width: '22%', 
-                    padding: '10px 8px',
-                    pr: 0.5 // Reduced right padding to bring closer to next column
-                  }}>
+                  <TableCell sx={{ width: '22%', padding: '10px 8px' }}>
                     <Typography variant="caption" fontWeight={600} noWrap>
                       Grant / Contract
                     </Typography>
                   </TableCell>
-                  <TableCell align="center" sx={{ 
-                    width: '14%', 
-                    padding: '10px 8px',
-                    pl: 0.5 // Reduced left padding to bring closer to previous column
-                  }}>
+                  <TableCell align="center" sx={{ width: '14%', padding: '10px 8px' }}>
                     <Typography variant="caption" fontWeight={600} noWrap>
                       Total Funding
                     </Typography>
@@ -620,15 +607,15 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
                       Status
                     </Typography>
                   </TableCell>
-                  {/* <TableCell align="center" sx={{ width: '4%', padding: '10px 8px' }}>
+                  <TableCell align="center" sx={{ width: '4%', padding: '10px 8px' }}>
                     <Typography variant="caption" fontWeight={600} noWrap>
                       Actions
                     </Typography>
-                  </TableCell> */}
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {contracts.slice(0, 8).map((contract) => {
+                {contracts.map((contract) => {
                   const details = contractDetails[contract.id] || {};
                   const funding = details.fundingInfo || extractFundingInfo(contract);
                   const status = getContractStatus(contract);
@@ -636,29 +623,25 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
                   
                   return (
                     <TableRow 
-  key={contract.id}
-  hover
-  onClick={() => onViewContract?.(contract)} // Add this click handler
-  sx={{ 
-    '&:last-child td, &:last-child th': { border: 0 },
-    bgcolor: contract.needs_review ? 'warning.50' : 'inherit',
-    cursor: 'pointer', 
-    '&:hover': {
-      bgcolor: 'action.hover',
-    }
-  }}
->
-                      <TableCell sx={{ 
-                        width: '22%', 
-                        padding: '10px 8px',
-                        // pr: 0.5
-                      }}>
+                      key={contract.id}
+                      hover
+                      onClick={() => onViewContract?.(contract)}
+                      sx={{ 
+                        '&:last-child td, &:last-child th': { border: 0 },
+                        bgcolor: contract.needs_review ? 'warning.50' : 'inherit',
+                        cursor: 'pointer', 
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        }
+                      }}
+                    >
+                      <TableCell sx={{ width: '22%', padding: '10px 8px' }}>
                         <Box sx={{ overflow: 'hidden' }}>
                           <Typography variant="caption" fontWeight={600} display="block" noWrap>
                             {contract.contract_type || 'Unnamed Grant'}
                           </Typography>
                           <Typography variant="caption" color="text.secondary" display="block" noWrap>
-                            {contract.master_agreement_id || 'No ID'}
+                            {contract.master_agreement_id || `ID: ${contract.id}`}
                             {details.amendmentCount > 0 && (
                               <Badge 
                                 badgeContent={`+${details.amendmentCount}`} 
@@ -670,11 +653,7 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
                           </Typography>
                         </Box>
                       </TableCell>
-                      <TableCell align="center" sx={{ 
-                        width: '14%', 
-                        padding: '10px 8px',
-                        // pl: 0.5
-                      }}>
+                      <TableCell align="center" sx={{ width: '14%', padding: '10px 8px' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
                           <AttachMoneyOutlined fontSize="small" color="primary" />
                           <Typography variant="caption" fontWeight={600} noWrap>
@@ -756,13 +735,21 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
                           }}
                         />
                       </TableCell>
-                      {/* <TableCell align="center" sx={{ width: '4%', padding: '10px 8px' }}>
-                        <Tooltip title="View Funding Details">
-                          <IconButton size="small" sx={{ padding: '4px' }}>
+                      <TableCell align="center" sx={{ width: '4%', padding: '10px 8px' }}>
+                        <Tooltip title="View Details">
+                          <IconButton 
+                            size="small" 
+                            sx={{ padding: '4px' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              console.log('View details for contract:', contract.id);
+                              onViewContract?.(contract);
+                            }}
+                          >
                             <ArrowForwardOutlined fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                      </TableCell> */}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -812,7 +799,7 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <PendingActionsOutlined fontSize="small" color="warning" />
                 <Box>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography variant="caption" color="text-secondary" display="block">
                     Pending Disbursements
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
@@ -825,7 +812,7 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <WarningOutlined fontSize="small" color="error" />
                 <Box>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography variant="caption" color="text-secondary" display="block">
                     Approaching Deadline
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
@@ -844,8 +831,15 @@ const ContractDistribution = ({ summary, contracts: initialContracts }) => {
 const ContractMetrics = ({ summary, contracts }) => {
   return (
     <Grid container spacing={3} sx={{ mb: 4 }}>
-      <Grid item xs={12} lg={7.5}>  {/* No height restriction */}
-        <ContractDistribution summary={summary} contracts={contracts} />
+      <Grid item xs={12} lg={7.5}>
+        <ContractDistribution 
+          summary={summary} 
+          contracts={contracts} 
+          onViewContract={(contract) => {
+            console.log('Dashboard contract clicked:', contract.id);
+            // You can add navigation here
+          }}
+        />
       </Grid>
       <Grid item xs={12} lg={4.5}>
         <RiskDistribution contracts={contracts} />

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Box, ThemeProvider, Button, Snackbar, Alert } from '@mui/material';
+import { Box, ThemeProvider, Button, Snackbar, Alert, Typography } from '@mui/material';
+import { RefreshOutlined } from '@mui/icons-material';
 import ContractFilters from './ContractFilters';
 import ContractTable from './ContractTable';
 import { ComparisonPanel, ComparisonDialog } from './ContractComparison';
 import contractListTheme from './ContractListTheme';
-import { getContracts, searchContracts, compareContracts, debugContracts } from '../../services/api'; // Add debugContracts
+import { getContracts, searchContracts, compareContracts, debugContracts } from '../../services/api';
 
 const ContractList = ({ onSelectContract }) => {
   const [contracts, setContracts] = useState([]);
@@ -15,48 +16,48 @@ const ContractList = ({ onSelectContract }) => {
   const [comparisonResult, setComparisonResult] = useState(null);
   const [comparing, setComparing] = useState(false);
   const [filters, setFilters] = useState({});
-  const [debugOpen, setDebugOpen] = useState(false); // Add debug state
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
     fetchContracts();
-  }, []);
+    
+    // Set up auto-refresh every 3 seconds
+    const intervalId = setInterval(() => {
+      if (autoRefresh) {
+        fetchContracts();
+      }
+    }, 3000);
+    
+    return () => clearInterval(intervalId);
+  }, [autoRefresh]);
 
   const fetchContracts = async () => {
-    setLoading(true);
     try {
       const data = await getContracts();
-      console.log('Fetched contracts:', data);
-      console.log('Number of contracts:', data.length);
+      console.log('Contracts fetched:', {
+        count: data.length,
+        ids: data.map(c => c.id),
+        timestamp: new Date().toISOString()
+      });
       
-      // Debug: Check the structure of returned contracts
-      if (data && data.length > 0) {
-        console.log('Sample contract structure:', {
-          id: data[0].id,
-          type: data[0].contract_type,
-          parties: data[0].parties,
-          signatories: data[0].signatories,
-          hasTotalValue: data[0].total_value !== undefined,
-          hasRiskScore: data[0].risk_score !== undefined,
-          keys: Object.keys(data[0])
-        });
+      // Check for new contracts
+      const oldIds = contracts.map(c => c.id);
+      const newIds = data.map(c => c.id);
+      const newContracts = data.filter(c => !oldIds.includes(c.id));
+      
+      if (newContracts.length > 0) {
+        console.log('New contracts detected:', newContracts.map(c => c.id));
       }
       
       setContracts(data || []);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching contracts:', error);
       setContracts([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Add debug function
-  const handleDebug = async () => {
-    try {
-      const data = await debugContracts();
-      setDebugOpen(true);
-    } catch (error) {
-      console.error('Debug failed:', error);
     }
   };
 
@@ -80,7 +81,6 @@ const ContractList = ({ onSelectContract }) => {
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters);
-    // Implement filter logic here
     console.log('Filters applied:', newFilters);
   };
 
@@ -121,6 +121,24 @@ const ContractList = ({ onSelectContract }) => {
     setSelectedForCompare(selectedForCompare.filter(c => c.id !== contractId));
   };
 
+  const handleManualRefresh = () => {
+    setLoading(true);
+    fetchContracts();
+  };
+
+  const handleDebug = async () => {
+    try {
+      const data = await debugContracts();
+      setDebugOpen(true);
+    } catch (error) {
+      console.error('Debug failed:', error);
+    }
+  };
+
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+  };
+
   const applyFilters = (contracts, filters) => {
     let filtered = [...contracts];
     
@@ -149,20 +167,78 @@ const ContractList = ({ onSelectContract }) => {
 
   const filteredContracts = applyFilters(contracts, filters);
 
- return (
+  return (
     <ThemeProvider theme={contractListTheme}>
       <Box sx={{ width: '100%' }}>
-        {/* Add debug button for testing */}
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={handleDebug}
-            sx={{ fontSize: '0.75rem' }}
-          >
-            Debug API
-          </Button>
+        {/* Header with controls */}
+        <Box sx={{ 
+          mb: 2, 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 2
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Button 
+              variant="outlined" 
+              size="small"
+              onClick={handleManualRefresh}
+              disabled={loading}
+              startIcon={<RefreshOutlined />}
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <Button 
+              variant={autoRefresh ? "contained" : "outlined"}
+              size="small"
+              onClick={toggleAutoRefresh}
+              sx={{ fontSize: '0.75rem' }}
+            >
+              Auto-refresh: {autoRefresh ? 'ON' : 'OFF'}
+            </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+              Last: {lastUpdated.toLocaleTimeString()}
+            </Typography>
+          </Box>
+          
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button 
+              variant="outlined" 
+              size="small"
+              onClick={handleDebug}
+              sx={{ fontSize: '0.75rem' }}
+            >
+              Debug API
+            </Button>
+          </Box>
         </Box>
+
+        {/* Status summary */}
+        {contracts.length > 0 && (
+          <Box sx={{ 
+            mb: 2, 
+            p: 2, 
+            bgcolor: 'primary.50', 
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'primary.100'
+          }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="subtitle2" color="primary.main" fontWeight={600}>
+                Total Contracts: {contracts.length}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Showing {filteredContracts.length} after filters
+              </Typography>
+            </Box>
+            {contracts.length > 10 && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Scroll horizontally to see all columns
+              </Typography>
+            )}
+          </Box>
+        )}
 
         <ComparisonPanel
           selectedContracts={selectedForCompare}

@@ -1145,5 +1145,46 @@ async def debug_contracts(db: Session = Depends(get_db)):
         'total_contracts': len(contracts),
         'contracts': result
     }
+
+@app.get("/debug/contract/{contract_id}")
+async def debug_contract(contract_id: int, db: Session = Depends(get_db)):
+    """Debug endpoint to check specific contract"""
+    contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
     
-        
+    if not contract:
+        return {"error": f"Contract {contract_id} not found"}
+    
+    # Convert to dict with all fields
+    contract_dict = {}
+    for column in contract.__table__.columns:
+        value = getattr(contract, column.name)
+        contract_dict[column.name] = {
+            'value': value,
+            'type': type(value).__name__,
+            'is_json': isinstance(value, (dict, list))
+        }
+    
+    # Check if it has extracted_tables_data
+    has_tables = bool(contract.extracted_tables_data)
+    tables_count = 0
+    if has_tables:
+        if isinstance(contract.extracted_tables_data, dict):
+            tables_count = len(contract.extracted_tables_data.get('tables', []))
+        elif isinstance(contract.extracted_tables_data, str):
+            try:
+                tables_data = json.loads(contract.extracted_tables_data)
+                tables_count = len(tables_data.get('tables', []))
+            except:
+                tables_count = 0
+    
+    return {
+        'contract_id': contract.id,
+        'contract_type': contract.contract_type,
+        'parties': contract.parties,
+        'total_value': contract.total_value,
+        'has_tables': has_tables,
+        'tables_count': tables_count,
+        'document_id': contract.document_id,
+        'version': contract.version,
+        'all_fields': contract_dict
+    }       
