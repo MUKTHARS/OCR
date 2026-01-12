@@ -124,3 +124,27 @@ export const getDocumentStatus = async (documentId) => {
         throw error;
     }
 };
+
+export const debugContracts = async () => {
+  try {
+    const response = await api.get('/contracts');
+    console.log('Raw API response:', response.data);
+    console.log('Number of contracts:', response.data.length);
+    
+    // Log first contract structure
+    if (response.data.length > 0) {
+      console.log('First contract structure:', {
+        id: response.data[0].id,
+        contract_type: response.data[0].contract_type,
+        parties: response.data[0].parties,
+        signatories: response.data[0].signatories,
+        total_value: response.data[0].total_value,
+        keys: Object.keys(response.data[0])
+      });
+    }
+    return response.data;
+  } catch (error) {
+    console.error('Debug API error:', error);
+    return [];
+  }
+};

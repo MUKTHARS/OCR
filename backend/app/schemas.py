@@ -128,6 +128,30 @@ class ContractResponse(ContractCreate):
                 return None
         return v
     
+    # Add validator to handle missing fields
+    @field_validator('*', mode='before')
+    @classmethod
+    def set_defaults(cls, v, field_info):
+        if v is None and field_info.field_name not in [
+            'id', 'extraction_date', 'needs_review', 'version'
+        ]:
+            # Set defaults for optional fields
+            if field_info.field_name == 'parties':
+                return []
+            elif field_info.field_name == 'signatories':
+                return []
+            elif field_info.field_name == 'contacts':
+                return []
+            elif field_info.field_name == 'clauses':
+                return {}
+            elif field_info.field_name == 'key_fields':
+                return {}
+            elif field_info.field_name == 'risk_factors':
+                return []
+            elif field_info.field_name == 'deliverables':
+                return []
+        return v
+    
     class Config:
         from_attributes = True
 

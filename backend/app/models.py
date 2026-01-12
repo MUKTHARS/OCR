@@ -93,6 +93,21 @@ class Contract(Base):
     document = relationship("Document", back_populates="contracts")
     previous_version = relationship("Contract", remote_side=[id], backref="next_versions")
 
+    def to_dict(self):
+        """Convert contract to dictionary for JSON serialization"""
+        data = {}
+        for column in self.__table__.columns:
+            value = getattr(self, column.name)
+            # Handle dates
+            if isinstance(value, datetime):
+                data[column.name] = value.isoformat()
+            # Handle JSON fields
+            elif isinstance(value, (dict, list)):
+                data[column.name] = value
+            else:
+                data[column.name] = value
+        return data
+
 class RAGEmbedding(Base):
     __tablename__ = "rag_embeddings"
     

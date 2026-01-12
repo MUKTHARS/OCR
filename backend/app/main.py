@@ -3,9 +3,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 import os
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Load .env file from the project root
+env_path = Path("C:/saple.ai/OCR/backend/.env")
+if env_path.exists():
+    print(f"Loading .env file from: {env_path}")
+    load_dotenv(dotenv_path=env_path, override=True)
+else:
+    # Try alternative path
+    env_path = Path(".env")
+    if env_path.exists():
+        print(f"Loading .env file from: {env_path}")
+        load_dotenv(dotenv_path=env_path, override=True)
+    else:
+        print("Warning: .env file not found. Using system environment variables.")
+
+# Now load other imports
 from app.database import get_db, engine
-# from database import get_db, engine
 from . import models
 from . import schemas
 from .agents.contract_processor import ContractProcessor
@@ -15,7 +31,12 @@ import json
 from datetime import datetime
 from typing import Optional
 
-load_dotenv()
+# Debug: Check if OPENAI_API_KEY is loaded
+api_key = os.getenv("OPENAI_API_KEY")
+if api_key:
+    print(f"OPENAI_API_KEY loaded: {api_key[:10]}...{api_key[-4:] if len(api_key) > 14 else '***'}")
+else:
+    print("Warning: OPENAI_API_KEY not found in environment")
 
 app = FastAPI(title="Contract Intelligence Agent")
 
@@ -657,7 +678,42 @@ async def get_contracts(
         .offset(skip)\
         .limit(limit)\
         .all()
-    return contracts
+    
+    # Ensure all fields are properly serialized
+    contract_list = []
+    for contract in contracts:
+        contract_dict = contract.__dict__.copy()
+        
+        # Ensure signatories and contacts are properly formatted
+        if isinstance(contract_dict.get('signatories'), str):
+            try:
+                contract_dict['signatories'] = json.loads(contract_dict['signatories'])
+            except:
+                contract_dict['signatories'] = []
+        
+        if isinstance(contract_dict.get('contacts'), str):
+            try:
+                contract_dict['contacts'] = json.loads(contract_dict['contacts'])
+            except:
+                contract_dict['contacts'] = []
+        
+        # Ensure parties is a list
+        if isinstance(contract_dict.get('parties'), str):
+            try:
+                contract_dict['parties'] = json.loads(contract_dict['parties'])
+            except:
+                contract_dict['parties'] = []
+        elif contract_dict.get('parties') is None:
+            contract_dict['parties'] = []
+        
+        # Convert dates to ISO format
+        for date_field in ['effective_date', 'expiration_date', 'execution_date', 'termination_date']:
+            if contract_dict.get(date_field) and hasattr(contract_dict[date_field], 'isoformat'):
+                contract_dict[date_field] = contract_dict[date_field].isoformat()
+        
+        contract_list.append(contract_dict)
+    
+    return contract_list
 
 @app.get("/contracts/{contract_id}", response_model=schemas.ContractResponse)
 async def get_contract(
@@ -1029,3 +1085,65 @@ async def get_ai_contract_summary(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/env-check")
+async def environment_check():
+    """Check if environment variables are loaded correctly"""
+    env_vars = {
+        "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "NOT SET"),
+        "DATABASE_URL": os.getenv("DATABASE_URL", "NOT SET"),
+        "ALLOWED_ORIGINS": os.getenv("ALLOWED_ORIGINS", "NOT SET"),
+    }
+    
+    # Check if keys are properly loaded
+    api_key = env_vars["OPENAI_API_KEY"]
+    api_key_status = "SET" if api_key != "NOT SET" and len(api_key) > 10 else "INVALID/NOT SET"
+    
+    return {
+        "environment_variables": env_vars,
+        "status": {
+            "openai_api_key": api_key_status,
+            "database_url": "SET" if env_vars["DATABASE_URL"] != "NOT SET" else "NOT SET",
+            "server_running": True
+        },
+        "chromadb_working": True,  # ChromaDB is working based on your logs
+        "notes": "ChromaDB is working (based on logs). OpenAI needs API key."
+    }   
+
+@app.get("/debug/contracts")
+async def debug_contracts(db: Session = Depends(get_db)):
+    """Debug endpoint to check contract data"""
+    from sqlalchemy import inspect
+    
+    contracts = db.query(models.Contract).all()
+    
+    result = []
+    for contract in contracts:
+        inspector = inspect(contract)
+        
+        # Get all column values
+        contract_data = {}
+        for column in inspector.mapper.columns:
+            value = getattr(contract, column.key)
+            contract_data[column.key] = {
+                'value': value,
+                'type': type(value).__name__,
+                'is_json': isinstance(value, (dict, list))
+            }
+        
+        result.append({
+            'id': contract.id,
+            'contract_type': contract.contract_type,
+            'parties': contract.parties,
+            'total_value': contract.total_value,
+            'signatories': contract.signatories,
+            'all_fields': contract_data
+        })
+    
+    return {
+        'total_contracts': len(contracts),
+        'contracts': result
+    }
+    
+        

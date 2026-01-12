@@ -11,12 +11,11 @@ import hashlib
 class TableExtractor:
     def __init__(self):
         self.table_cache = {}
-        
+
     def extract_tables_from_pdf(self, file_content: bytes) -> Dict[str, Any]:
-        """Extract tables from PDF using Camelot with better configuration"""
+        """Extract tables from PDF using Camelot with CORRECT parameters"""
         tables_data = {
             "tables": [],
-            "flavor": "lattice",  # Changed to lattice for better accuracy
             "total_tables": 0
         }
         
@@ -24,38 +23,46 @@ class TableExtractor:
             # Save PDF to BytesIO for Camelot
             pdf_file = BytesIO(file_content)
             
-            # Try multiple extraction methods with better parameters
+            print("Attempting table extraction with Camelot...")
+            
+            # Try different approaches
             extraction_methods = [
-                {"flavor": "lattice", "pages": "all", "line_scale": 40},
-                {"flavor": "stream", "pages": "all", "strip_text": "\n", "edge_tol": 500},
-                {"flavor": "stream", "pages": "all", "strip_text": "\n", "row_tol": 10}
+                {"method": "lattice", "params": {"pages": "all", "strip_text": "\n"}},
+                {"method": "stream", "params": {"pages": "all", "strip_text": "\n"}},
             ]
             
             all_tables = []
             
             for method_config in extraction_methods:
                 try:
-                    print(f"Trying extraction with {method_config['flavor']} flavor...")
-                    tables = camelot.read_pdf(
-                        pdf_file,
-                        pages=method_config.get("pages", "all"),
-                        flavor=method_config.get("flavor", "lattice"),
-                        strip_text=method_config.get("strip_text", "\n"),
-                        line_scale=method_config.get("line_scale", 40),
-                        edge_tol=method_config.get("edge_tol", 50),
-                        row_tol=method_config.get("row_tol", 2),
-                        suppress_stdout=True  # Suppress warnings
-                    )
+                    print(f"Trying {method_config['method']} extraction...")
+                    
+                    if method_config['method'] == 'lattice':
+                        tables = camelot.read_pdf(
+                            pdf_file,
+                            flavor='lattice',
+                            pages=method_config['params'].get('pages', 'all'),
+                            strip_text=method_config['params'].get('strip_text', '\n')
+                        )
+                    else:  # stream
+                        tables = camelot.read_pdf(
+                            pdf_file,
+                            flavor='stream',
+                            pages=method_config['params'].get('pages', 'all'),
+                            strip_text=method_config['params'].get('strip_text', '\n'),
+                            edge_tol=500,
+                            row_tol=10
+                        )
                     
                     if tables:
+                        print(f"Found {len(tables)} tables with {method_config['method']} flavor")
                         all_tables.extend(tables)
-                        print(f"Found {len(tables)} tables with {method_config['flavor']} flavor")
                         
                 except Exception as method_error:
-                    print(f"Extraction with {method_config['flavor']} failed: {method_error}")
+                    print(f"Extraction with {method_config['method']} failed: {method_error}")
                     continue
             
-            # Remove duplicate tables (by page and approximate position)
+            # Remove duplicate tables (by page and order)
             unique_tables = []
             seen_locations = set()
             
@@ -76,7 +83,7 @@ class TableExtractor:
                     df = self._clean_dataframe(df)
                     
                     # Only include tables with meaningful data
-                    if len(df) > 0 and len(df.columns) > 0:
+                    if len(df) > 0 and len(df.columns) > 0 and not df.empty:
                         table_info = {
                             "table_index": i,
                             "page": table.page,
@@ -95,6 +102,7 @@ class TableExtractor:
                         table_info["type"] = self._detect_table_type(df, table.page)
                         
                         tables_data["tables"].append(table_info)
+                        print(f"  - Table {i+1}: {table_info['type']} ({len(df)} rows, {len(df.columns)} cols)")
                         
                 except Exception as e:
                     print(f"Error processing table {i}: {e}")
@@ -103,7 +111,10 @@ class TableExtractor:
             tables_data["total_tables"] = len(tables_data["tables"])
             
             # Group tables by type
-            tables_data["tables_by_type"] = self._group_tables_by_type(tables_data["tables"])
+            if tables_data["tables"]:
+                tables_data["tables_by_type"] = self._group_tables_by_type(tables_data["tables"])
+            else:
+                tables_data["tables_by_type"] = {}
             
             print(f"Successfully extracted {tables_data['total_tables']} tables")
             
@@ -114,6 +125,235 @@ class TableExtractor:
             tables_data["error"] = str(e)
         
         return tables_data
+
+    # def extract_tables_from_pdf(self, file_content: bytes) -> Dict[str, Any]:
+    #     """Extract tables from PDF using Camelot with correct parameters"""
+    #     tables_data = {
+    #         "tables": [],
+    #         "flavor": "auto",
+    #         "total_tables": 0
+    #     }
+        
+    #     try:
+    #         # Save PDF to BytesIO for Camelot
+    #         pdf_file = BytesIO(file_content)
+            
+    #         # Try multiple extraction methods with CORRECT parameters for each flavor
+    #         extraction_methods = [
+    #             {
+    #                 "flavor": "lattice", 
+    #                 "pages": "all", 
+    #                 "line_scale": 40,
+    #                 "suppress_stdout": True
+    #             },
+    #             {
+    #                 "flavor": "stream", 
+    #                 "pages": "all", 
+    #                 "strip_text": "\n",
+    #                 "edge_tol": 500,
+    #                 "row_tol": 10,
+    #                 "suppress_stdout": True
+    #             }
+    #         ]
+            
+    #         all_tables = []
+            
+    #         for method_config in extraction_methods:
+    #             try:
+    #                 print(f"Trying extraction with {method_config['flavor']} flavor...")
+                    
+    #                 # Separate parameters by flavor
+    #                 if method_config["flavor"] == "lattice":
+    #                     tables = camelot.read_pdf(
+    #                         pdf_file,
+    #                         pages=method_config.get("pages", "all"),
+    #                         flavor="lattice",
+    #                         line_scale=method_config.get("line_scale", 40),
+    #                         suppress_stdout=method_config.get("suppress_stdout", True)
+    #                     )
+    #                 else:  # stream flavor
+    #                     tables = camelot.read_pdf(
+    #                         pdf_file,
+    #                         pages=method_config.get("pages", "all"),
+    #                         flavor="stream",
+    #                         strip_text=method_config.get("strip_text", "\n"),
+    #                         edge_tol=method_config.get("edge_tol", 50),
+    #                         row_tol=method_config.get("row_tol", 2),
+    #                         suppress_stdout=method_config.get("suppress_stdout", True)
+    #                     )
+                    
+    #                 if tables:
+    #                     all_tables.extend(tables)
+    #                     print(f"Found {len(tables)} tables with {method_config['flavor']} flavor")
+                        
+    #             except Exception as method_error:
+    #                 print(f"Extraction with {method_config['flavor']} failed: {method_error}")
+    #                 continue
+            
+    #         # Remove duplicate tables (by page and approximate position)
+    #         unique_tables = []
+    #         seen_locations = set()
+            
+    #         for table in all_tables:
+    #             location_key = f"{table.page}_{table.order}"
+    #             if location_key not in seen_locations:
+    #                 seen_locations.add(location_key)
+    #                 unique_tables.append(table)
+            
+    #         print(f"Total unique tables found: {len(unique_tables)}")
+            
+    #         for i, table in enumerate(unique_tables):
+    #             try:
+    #                 # Convert table to structured data
+    #                 df = table.df
+                    
+    #                 # Clean the dataframe
+    #                 df = self._clean_dataframe(df)
+                    
+    #                 # Only include tables with meaningful data
+    #                 if len(df) > 0 and len(df.columns) > 0:
+    #                     table_info = {
+    #                         "table_index": i,
+    #                         "page": table.page,
+    #                         "accuracy": table.accuracy,
+    #                         "whitespace": table.whitespace,
+    #                         "order": table.order,
+    #                         "data": df.to_dict(orient='records'),
+    #                         "columns": df.columns.tolist(),
+    #                         "row_count": len(df),
+    #                         "col_count": len(df.columns),
+    #                         "flavor": table.flavor,
+    #                         "raw_data": df.to_dict(orient='split')
+    #                     }
+                        
+    #                     # Try to detect table type
+    #                     table_info["type"] = self._detect_table_type(df, table.page)
+                        
+    #                     tables_data["tables"].append(table_info)
+                        
+    #             except Exception as e:
+    #                 print(f"Error processing table {i}: {e}")
+    #                 continue
+            
+    #         tables_data["total_tables"] = len(tables_data["tables"])
+            
+    #         # Group tables by type
+    #         tables_data["tables_by_type"] = self._group_tables_by_type(tables_data["tables"])
+            
+    #         print(f"Successfully extracted {tables_data['total_tables']} tables")
+            
+    #     except Exception as e:
+    #         print(f"Error extracting tables: {e}")
+    #         import traceback
+    #         traceback.print_exc()
+    #         tables_data["error"] = str(e)
+        
+    #     return tables_data
+
+    # def extract_tables_from_pdf(self, file_content: bytes) -> Dict[str, Any]:
+    #     """Extract tables from PDF using Camelot with better configuration"""
+    #     tables_data = {
+    #         "tables": [],
+    #         "flavor": "lattice",  # Changed to lattice for better accuracy
+    #         "total_tables": 0
+    #     }
+        
+    #     try:
+    #         # Save PDF to BytesIO for Camelot
+    #         pdf_file = BytesIO(file_content)
+            
+    #         # Try multiple extraction methods with better parameters
+    #         extraction_methods = [
+    #             {"flavor": "lattice", "pages": "all", "line_scale": 40},
+    #             {"flavor": "stream", "pages": "all", "strip_text": "\n", "edge_tol": 500},
+    #             {"flavor": "stream", "pages": "all", "strip_text": "\n", "row_tol": 10}
+    #         ]
+            
+    #         all_tables = []
+            
+    #         for method_config in extraction_methods:
+    #             try:
+    #                 print(f"Trying extraction with {method_config['flavor']} flavor...")
+    #                 tables = camelot.read_pdf(
+    #                     pdf_file,
+    #                     pages=method_config.get("pages", "all"),
+    #                     flavor=method_config.get("flavor", "lattice"),
+    #                     strip_text=method_config.get("strip_text", "\n"),
+    #                     line_scale=method_config.get("line_scale", 40),
+    #                     edge_tol=method_config.get("edge_tol", 50),
+    #                     row_tol=method_config.get("row_tol", 2),
+    #                     suppress_stdout=True  # Suppress warnings
+    #                 )
+                    
+    #                 if tables:
+    #                     all_tables.extend(tables)
+    #                     print(f"Found {len(tables)} tables with {method_config['flavor']} flavor")
+                        
+    #             except Exception as method_error:
+    #                 print(f"Extraction with {method_config['flavor']} failed: {method_error}")
+    #                 continue
+            
+    #         # Remove duplicate tables (by page and approximate position)
+    #         unique_tables = []
+    #         seen_locations = set()
+            
+    #         for table in all_tables:
+    #             location_key = f"{table.page}_{table.order}"
+    #             if location_key not in seen_locations:
+    #                 seen_locations.add(location_key)
+    #                 unique_tables.append(table)
+            
+    #         print(f"Total unique tables found: {len(unique_tables)}")
+            
+    #         for i, table in enumerate(unique_tables):
+    #             try:
+    #                 # Convert table to structured data
+    #                 df = table.df
+                    
+    #                 # Clean the dataframe
+    #                 df = self._clean_dataframe(df)
+                    
+    #                 # Only include tables with meaningful data
+    #                 if len(df) > 0 and len(df.columns) > 0:
+    #                     table_info = {
+    #                         "table_index": i,
+    #                         "page": table.page,
+    #                         "accuracy": table.accuracy,
+    #                         "whitespace": table.whitespace,
+    #                         "order": table.order,
+    #                         "data": df.to_dict(orient='records'),
+    #                         "columns": df.columns.tolist(),
+    #                         "row_count": len(df),
+    #                         "col_count": len(df.columns),
+    #                         "flavor": table.flavor,
+    #                         "raw_data": df.to_dict(orient='split')
+    #                     }
+                        
+    #                     # Try to detect table type
+    #                     table_info["type"] = self._detect_table_type(df, table.page)
+                        
+    #                     tables_data["tables"].append(table_info)
+                        
+    #             except Exception as e:
+    #                 print(f"Error processing table {i}: {e}")
+    #                 continue
+            
+    #         tables_data["total_tables"] = len(tables_data["tables"])
+            
+    #         # Group tables by type
+    #         tables_data["tables_by_type"] = self._group_tables_by_type(tables_data["tables"])
+            
+    #         print(f"Successfully extracted {tables_data['total_tables']} tables")
+            
+    #     except Exception as e:
+    #         print(f"Error extracting tables: {e}")
+    #         import traceback
+    #         traceback.print_exc()
+    #         tables_data["error"] = str(e)
+        
+    #     return tables_data
+    
+    
     # def extract_tables_from_pdf(self, file_content: bytes) -> Dict[str, Any]:
     #     """Extract tables from PDF using Camelot"""
     #     tables_data = {

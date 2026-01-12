@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Box, ThemeProvider } from '@mui/material';
+import { Box, ThemeProvider, Button, Snackbar, Alert } from '@mui/material';
 import ContractFilters from './ContractFilters';
 import ContractTable from './ContractTable';
 import { ComparisonPanel, ComparisonDialog } from './ContractComparison';
 import contractListTheme from './ContractListTheme';
-import { getContracts, searchContracts, compareContracts } from '../../services/api';
+import { getContracts, searchContracts, compareContracts, debugContracts } from '../../services/api'; // Add debugContracts
 
 const ContractList = ({ onSelectContract }) => {
   const [contracts, setContracts] = useState([]);
@@ -15,6 +15,7 @@ const ContractList = ({ onSelectContract }) => {
   const [comparisonResult, setComparisonResult] = useState(null);
   const [comparing, setComparing] = useState(false);
   const [filters, setFilters] = useState({});
+  const [debugOpen, setDebugOpen] = useState(false); // Add debug state
 
   useEffect(() => {
     fetchContracts();
@@ -24,11 +25,38 @@ const ContractList = ({ onSelectContract }) => {
     setLoading(true);
     try {
       const data = await getContracts();
-      setContracts(data);
+      console.log('Fetched contracts:', data);
+      console.log('Number of contracts:', data.length);
+      
+      // Debug: Check the structure of returned contracts
+      if (data && data.length > 0) {
+        console.log('Sample contract structure:', {
+          id: data[0].id,
+          type: data[0].contract_type,
+          parties: data[0].parties,
+          signatories: data[0].signatories,
+          hasTotalValue: data[0].total_value !== undefined,
+          hasRiskScore: data[0].risk_score !== undefined,
+          keys: Object.keys(data[0])
+        });
+      }
+      
+      setContracts(data || []);
     } catch (error) {
       console.error('Error fetching contracts:', error);
+      setContracts([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Add debug function
+  const handleDebug = async () => {
+    try {
+      const data = await debugContracts();
+      setDebugOpen(true);
+    } catch (error) {
+      console.error('Debug failed:', error);
     }
   };
 
@@ -121,9 +149,21 @@ const ContractList = ({ onSelectContract }) => {
 
   const filteredContracts = applyFilters(contracts, filters);
 
-  return (
+ return (
     <ThemeProvider theme={contractListTheme}>
       <Box sx={{ width: '100%' }}>
+        {/* Add debug button for testing */}
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button 
+            variant="outlined" 
+            size="small"
+            onClick={handleDebug}
+            sx={{ fontSize: '0.75rem' }}
+          >
+            Debug API
+          </Button>
+        </Box>
+
         <ComparisonPanel
           selectedContracts={selectedForCompare}
           onClear={clearComparison}
@@ -153,6 +193,17 @@ const ContractList = ({ onSelectContract }) => {
           comparisonResult={comparisonResult}
           selectedForCompare={selectedForCompare}
         />
+
+        {/* Debug Snackbar */}
+        <Snackbar 
+          open={debugOpen} 
+          autoHideDuration={6000} 
+          onClose={() => setDebugOpen(false)}
+        >
+          <Alert severity="info" onClose={() => setDebugOpen(false)}>
+            Check console for debug output
+          </Alert>
+        </Snackbar>
       </Box>
     </ThemeProvider>
   );
