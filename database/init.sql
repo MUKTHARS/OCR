@@ -55,3 +55,4 @@ CREATE INDEX idx_rag_contract_id ON rag_embeddings(contract_id);
 -- For vector similarity search (if using pgvector)
 -- CREATE EXTENSION vector;
 -- ALTER TABLE rag_embeddings ADD COLUMN embedding_vector vector(1536);
+

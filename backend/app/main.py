@@ -10,6 +10,7 @@ from . import models
 from . import schemas
 from .agents.contract_processor import ContractProcessor
 from .agents.rag_engine import RAGEngine
+from .agents.enhanced_rag_engine import EnhancedRAGEngine
 import json
 from datetime import datetime
 from typing import Optional
@@ -32,8 +33,6 @@ models.Base.metadata.create_all(bind=engine)
 
 processor = ContractProcessor()
 rag_engine = RAGEngine()
-
-
 
 @app.get("/contracts/summary")
 async def get_contracts_summary(db: Session = Depends(get_db)):
@@ -268,7 +267,7 @@ async def advanced_search(
 
 def process_document_async(document_id: int, file_content: bytes, db: Session, 
                           is_amendment: bool = False, parent_document_id: Optional[int] = None):
-    """Enhanced async processing with versioning"""
+    """Enhanced async processing with table extraction"""
     try:
         print(f"Starting enhanced async processing for document {document_id}")
         
@@ -288,22 +287,17 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
             document.status = "processing"
             local_db.commit()
             
-            # Extract text with metadata
-            print(f"Extracting text from PDF for document {document_id}")
-            text = processor.extract_text_from_pdf(file_content)
-            pdf_metadata = {"page_count": "Unknown", "extraction_method": "PyPDF2"}
+            # Initialize processors
+            print(f"Initializing processors for document {document_id}")
+            processor = ContractProcessor()
             
-            if not text or len(text.strip()) < 50:
-                print(f"No substantial text extracted from document {document_id}")
-                document.status = "failed: No text extracted"
-                local_db.commit()
-                return
-            
-            print(f"Text extracted, length: {len(text)} characters")
-            
-            # Process contract
-            print(f"Processing contract with enhanced extraction")
-            extraction = processor.process_contract(text, pdf_metadata)
+            # Process contract with enhanced extraction
+            print(f"Processing contract with table extraction")
+            extraction = processor.process_contract(file_content, {
+                "document_id": document_id,
+                "filename": document.filename,
+                "is_amendment": is_amendment
+            })
             
             print(f"Extraction completed, confidence: {extraction.get('confidence_score')}")
             
@@ -325,64 +319,26 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                     
                     if previous_contract:
                         version = previous_contract.version + 1
-                        
-                        # Prepare extraction data from previous contract
-                        previous_extraction = {
-                            "contract_type": previous_contract.contract_type,
-                            "contract_subtype": previous_contract.contract_subtype,
-                            "master_agreement_id": previous_contract.master_agreement_id,
-                            "parties": previous_contract.parties,
-                            "dates": {
-                                "effective_date": previous_contract.effective_date,
-                                "expiration_date": previous_contract.expiration_date,
-                                "execution_date": previous_contract.execution_date,
-                                "termination_date": previous_contract.termination_date,
-                            },
-                            "financial": {
-                                "total_value": previous_contract.total_value,
-                                "currency": previous_contract.currency,
-                                "payment_terms": previous_contract.payment_terms,
-                                "billing_frequency": previous_contract.billing_frequency,
-                            },
-                            "clauses": previous_contract.clauses or {},
-                            "key_fields": previous_contract.key_fields or {},
-                            "confidence_score": previous_contract.confidence_score,
-                        }
-                        
-                        # Compare versions using full extraction
-                        comparison = processor.compare_versions(
-                            previous_extraction,
-                            extraction
-                        )
-                        
-                        # Store deltas
-                        for delta in comparison.get("deltas", []):
-                            contract_delta = models.ContractDelta(
-                                contract_id=previous_contract.id,
-                                previous_version_id=previous_contract.previous_version_id,
-                                field_name=delta["field_name"],
-                                old_value=json.dumps(delta["old_value"]) if delta["old_value"] else None,
-                                new_value=json.dumps(delta["new_value"]) if delta["new_value"] else None,
-                                change_type=delta["change_type"],
-                                confidence_change=comparison.get("confidence_change")
-                            )
-                            local_db.add(contract_delta)
+            
+            # Extract text for embeddings
+            text_result = processor.extract_text_from_pdf(file_content)
+            plain_text = text_result.get("text", "")
             
             # Fix the signatories extraction
             signatories_list = []
-            
-            # Try different possible locations for signatories
-            if extraction.get("contact_information") and extraction["contact_information"].get("signatories"):
-                signatories_list = extraction["contact_information"]["signatories"]
-            elif extraction.get("signatories"):
-                signatories_list = extraction["signatories"]
-            
-            # Fix the contacts extraction
             contacts_list = []
             
-            if extraction.get("contact_information") and extraction["contact_information"].get("administrative_contacts"):
-                contacts_list = extraction["contact_information"]["administrative_contacts"]
-            elif extraction.get("contacts"):
+            # Extract from multiple possible locations
+            if extraction.get("contact_information"):
+                if extraction["contact_information"].get("signatories"):
+                    signatories_list = extraction["contact_information"]["signatories"]
+                if extraction["contact_information"].get("administrative_contacts"):
+                    contacts_list = extraction["contact_information"]["administrative_contacts"]
+            
+            if extraction.get("signatories"):
+                signatories_list = extraction["signatories"]
+            
+            if extraction.get("contacts"):
                 contacts_list = extraction["contacts"]
             
             # Helper function to extract risk factors
@@ -407,14 +363,6 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                         "severity": "high",
                         "mitigation": "Negotiate liability cap",
                         "confidence": 0.8
-                    })
-                
-                if risk_indicators.get("penalty_clauses"):
-                    risk_factors.append({
-                        "factor": "Penalty Clauses",
-                        "severity": "medium",
-                        "mitigation": "Review penalty terms",
-                        "confidence": 0.7
                     })
                 
                 # Add risk based on contract value
@@ -456,67 +404,138 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                 return date_value
 
             # Save contract with all extracted fields
-            contract = models.Contract(
-                document_id=document_id,
-                contract_type=extraction.get("contract_type", "Unknown"),
-                contract_subtype=extraction.get("contract_subtype"),
-                master_agreement_id=extraction.get("master_agreement_id"),
-                parties=extraction.get("parties", []),
-                effective_date=clean_date(extraction.get("dates", {}).get("effective_date")),
-                expiration_date=clean_date(extraction.get("dates", {}).get("expiration_date")),
-                execution_date=clean_date(extraction.get("dates", {}).get("execution_date")),
-                termination_date=clean_date(extraction.get("dates", {}).get("termination_date")),
-                total_value=extraction.get("financial", {}).get("total_value"),
-                currency=extraction.get("financial", {}).get("currency"),
-                payment_terms=extraction.get("financial", {}).get("payment_terms"),
-                billing_frequency=extraction.get("financial", {}).get("billing_frequency"),
-                signatories=signatories_list,
-                contacts=contacts_list,
-                auto_renewal=extraction.get("risk_indicators", {}).get("auto_renewal"),
-                renewal_notice_period=extraction.get("dates", {}).get("notice_period_days"),
-                termination_notice_period=extraction.get("dates", {}).get("notice_period_days"),
-                governing_law=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
-                jurisdiction=extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
-                confidentiality=extraction.get("clauses", {}).get("confidentiality") is not None,
-                indemnification=extraction.get("clauses", {}).get("indemnification") is not None,
-                liability_cap=extraction.get("key_fields", {}).get("liability_cap", {}).get("value") if extraction.get("key_fields", {}).get("liability_cap") else None,
-                insurance_requirements=extraction.get("compliance_requirements", {}).get("minimum_coverage"),
-                service_levels=extraction.get("service_levels", {}),
-                deliverables=extraction.get("deliverables", []),
-                risk_score=extraction.get("risk_score", 0.0),
-                risk_factors=risk_factors_list,
-                clauses=extraction.get("clauses", {}),
-                key_fields=extraction.get("key_fields", {}),
-                extracted_metadata=extraction.get("metadata", {}),
-                confidence_score=extraction.get("confidence_score", 0.0),
-                version=version,
-                previous_version_id=previous_contract.id if previous_contract else None,
-                change_summary=f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction",
-                needs_review=True,
-            )
+            # Save contract with all extracted fields
+            # Save contract with all extracted fields
+            # contract_data = {
+            #     "document_id": document_id,
+            #     "contract_type": extraction.get("contract_type", "Unknown"),
+            #     "contract_subtype": extraction.get("contract_subtype"),
+            #     "master_agreement_id": extraction.get("master_agreement_id"),
+            #     "parties": extraction.get("parties", []),
+            #     "effective_date": clean_date(extraction.get("dates", {}).get("effective_date")),
+            #     "expiration_date": clean_date(extraction.get("dates", {}).get("expiration_date")),
+            #     "execution_date": clean_date(extraction.get("dates", {}).get("execution_date")),
+            #     "termination_date": clean_date(extraction.get("dates", {}).get("termination_date")),
+            #     "total_value": extraction.get("financial", {}).get("total_value"),
+            #     "currency": extraction.get("financial", {}).get("currency"),
+            #     "payment_terms": extraction.get("financial", {}).get("payment_terms"),
+            #     "billing_frequency": extraction.get("financial", {}).get("billing_frequency"),
+            #     "signatories": signatories_list,
+            #     "contacts": contacts_list,
+            #     "auto_renewal": extraction.get("risk_indicators", {}).get("auto_renewal"),
+            #     "renewal_notice_period": extraction.get("dates", {}).get("notice_period_days"),
+            #     "termination_notice_period": extraction.get("dates", {}).get("notice_period_days"),
+            #     "governing_law": extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+            #     "jurisdiction": extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+            #     "confidentiality": extraction.get("clauses", {}).get("confidentiality") is not None,
+            #     "indemnification": extraction.get("clauses", {}).get("indemnification") is not None,
+            #     "liability_cap": extraction.get("key_fields", {}).get("liability_cap", {}).get("value") if extraction.get("key_fields", {}).get("liability_cap") else None,
+            #     "insurance_requirements": extraction.get("compliance_requirements", {}).get("minimum_coverage"),
+            #     "service_levels": extraction.get("service_levels", {}),
+            #     "deliverables": extraction.get("deliverables", []),
+            #     "risk_score": extraction.get("risk_score", 0.0),
+            #     "risk_factors": risk_factors_list,
+            #     "clauses": extraction.get("clauses", {}),
+            #     "key_fields": extraction.get("key_fields", {}),
+            #     "extracted_metadata": extraction.get("metadata", {}),
+            #     "confidence_score": extraction.get("confidence_score", 0.0),
+            #     "version": version,
+            #     "previous_version_id": previous_contract.id if previous_contract else None,
+            #     "change_summary": f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction",
+            #     "needs_review": True,
+            # }
 
+            # # Create contract without extracted_tables_data field
+            # contract = models.Contract(**contract_data)
+
+            # local_db.add(contract)
+            # local_db.commit()
+            # local_db.refresh(contract)
+
+            # print(f"Contract saved with ID: {contract.id}, Version: {version}")
+
+            contract_data = {
+                "document_id": document_id,
+                "contract_type": extraction.get("contract_type", "Unknown"),
+                "contract_subtype": extraction.get("contract_subtype"),
+                "master_agreement_id": extraction.get("master_agreement_id"),
+                "parties": extraction.get("parties", []),
+                "effective_date": clean_date(extraction.get("dates", {}).get("effective_date")),
+                "expiration_date": clean_date(extraction.get("dates", {}).get("expiration_date")),
+                "execution_date": clean_date(extraction.get("dates", {}).get("execution_date")),
+                "termination_date": clean_date(extraction.get("dates", {}).get("termination_date")),
+                "total_value": extraction.get("financial", {}).get("total_value"),
+                "currency": extraction.get("financial", {}).get("currency"),
+                "payment_terms": extraction.get("financial", {}).get("payment_terms"),
+                "billing_frequency": extraction.get("financial", {}).get("billing_frequency"),
+                "signatories": signatories_list,
+                "contacts": contacts_list,
+                "auto_renewal": extraction.get("risk_indicators", {}).get("auto_renewal"),
+                "renewal_notice_period": extraction.get("dates", {}).get("notice_period_days"),
+                "termination_notice_period": extraction.get("dates", {}).get("notice_period_days"),
+                "governing_law": extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+                "jurisdiction": extraction.get("key_fields", {}).get("governing_law", {}).get("value") if extraction.get("key_fields", {}).get("governing_law") else None,
+                "confidentiality": extraction.get("clauses", {}).get("confidentiality") is not None,
+                "indemnification": extraction.get("clauses", {}).get("indemnification") is not None,
+                "liability_cap": extraction.get("key_fields", {}).get("liability_cap", {}).get("value") if extraction.get("key_fields", {}).get("liability_cap") else None,
+                "insurance_requirements": extraction.get("compliance_requirements", {}).get("minimum_coverage"),
+                "service_levels": extraction.get("service_levels", {}),
+                "deliverables": extraction.get("deliverables", []),
+                "risk_score": extraction.get("risk_score", 0.0),
+                "risk_factors": risk_factors_list,
+                "clauses": extraction.get("clauses", {}),
+                "key_fields": extraction.get("key_fields", {}),
+                "extracted_metadata": extraction.get("metadata", {}),
+                "extracted_tables_data": extraction.get("extracted_tables", {}),  # Add this line
+                "confidence_score": extraction.get("confidence_score", 0.0),
+                "version": version,
+                "previous_version_id": previous_contract.id if previous_contract else None,
+                "change_summary": f"Amendment detected with {len(extraction.get('clauses', {}))} clauses" if is_amendment else "Initial extraction",
+                "needs_review": True,
+            }
+
+            # Create contract
+            contract = models.Contract(**contract_data)
             local_db.add(contract)
             local_db.commit()
             local_db.refresh(contract)
-            
+
             print(f"Contract saved with ID: {contract.id}, Version: {version}")
+            print(f"Extracted tables count: {len(extraction.get('extracted_tables', {}).get('tables', [])) if extraction.get('extracted_tables') else 0}")
+
+            # Store extracted tables in a separate field if it exists
+            try:
+                if hasattr(contract, 'extracted_tables_data'):
+                    contract.extracted_tables_data = extraction.get("extracted_tables", {})
+                    local_db.commit()
+                    print(f"Extracted tables data stored for contract {contract.id}")
+            except Exception as e:
+                print(f"Note: Could not store extracted tables data: {e}")
             
-            # Create embeddings for RAG
-            print(f"Creating embeddings for contract {contract.id}")
-            rag = RAGEngine()
-            embeddings = rag.create_embeddings(text)
-            
-            for emb in embeddings:
-                rag_entry = models.RAGEmbedding(
-                    contract_id=contract.id,
-                    text_chunk=emb["text_chunk"],
-                    embedding=emb["embedding"],
-                    chunk_metadata=emb["metadata"],
-                    version=version
-                )
-                local_db.add(rag_entry)
-            
-            local_db.commit()
+            # Create embeddings for RAG using EnhancedRAGEngine
+            print(f"Creating embeddings for contract {contract.id} using ChromaDB")
+            if plain_text:
+                enhanced_rag = EnhancedRAGEngine()
+                embeddings = enhanced_rag.create_embeddings(plain_text, contract.id, version)
+                print(f"Created {len(embeddings)} embeddings in ChromaDB")
+                
+                # Store minimal reference in PostgreSQL
+                for emb in embeddings:
+                    rag_emb = models.RAGEmbedding(
+                        contract_id=contract.id,
+                        text_chunk=emb["text_chunk"],
+                        embedding={},  # Empty since we're using ChromaDB
+                        chunk_metadata=emb["chunk_metadata"],
+                        chroma_chunk_id=emb.get("chunk_id"),
+                        vector_db_type="chromadb",
+                        version=version
+                    )
+                    local_db.add(rag_emb)
+                
+                local_db.commit()
+                print(f"Saved {len(embeddings)} embedding references to PostgreSQL")
+            else:
+                print("No text available for embeddings")
             
             # Update document status
             document.status = "completed"
@@ -537,6 +556,8 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
                     .first()
                 if document:
                     document.status = f"failed: {str(e)[:100]}"
+                    document.last_processing_error = str(e)
+                    document.processing_attempts = (document.processing_attempts or 0) + 1
                     local_db.commit()
             except:
                 pass
@@ -547,7 +568,7 @@ def process_document_async(document_id: int, file_content: bytes, db: Session,
         print(f"Outer error in async processing: {str(e)}")
         import traceback
         traceback.print_exc()
-        
+
 # Update the upload endpoint to handle amendments
 @app.post("/upload", response_model=schemas.DocumentResponse)
 async def upload_document(
@@ -592,9 +613,10 @@ async def upload_document(
         print(f"Document saved with ID: {db_document.id}")
         
         # Extract text synchronously for validation
-        text = processor.extract_text_from_pdf(contents)
+        text_result = processor.extract_text_from_pdf(contents)
+        plain_text = text_result.get("text", "")
 
-        if not text or len(text.strip()) < 50:
+        if not plain_text or len(plain_text.strip()) < 50:
             db_document.status = "failed: Could not extract text"
             db.commit()
             raise HTTPException(
@@ -908,3 +930,102 @@ async def get_document_status(
         "contract_id": contract.id if contract else None,
         "upload_date": document.upload_date
     }    
+
+@app.get("/contracts/{contract_id}/tables")
+async def get_contract_tables(
+    contract_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get extracted tables for a contract"""
+    contract = db.query(models.Contract)\
+        .filter(models.Contract.id == contract_id)\
+        .first()
+    
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    return {
+        "contract_id": contract_id,
+        "tables_data": contract.extracted_tables_data or {},
+        "has_tables": bool(contract.extracted_tables_data)
+    }
+
+@app.post("/contracts/rag/search")
+async def rag_search(
+    query: str,
+    contract_ids: Optional[List[int]] = None,
+    limit: int = 5,
+    db: Session = Depends(get_db)
+):
+    """Search contracts using RAG with vector similarity"""
+    try:
+        enhanced_rag = EnhancedRAGEngine()
+        
+        # Perform similarity search
+        similar_chunks = enhanced_rag.search_similar(query, contract_ids, limit)
+        
+        # Group by contract
+        results_by_contract = {}
+        for chunk in similar_chunks:
+            contract_id = chunk["contract_id"]
+            if contract_id not in results_by_contract:
+                # Get contract info
+                contract = db.query(models.Contract)\
+                    .filter(models.Contract.id == contract_id)\
+                    .first()
+                
+                if contract:
+                    results_by_contract[contract_id] = {
+                        "contract": {
+                            "id": contract.id,
+                            "contract_type": contract.contract_type,
+                            "parties": contract.parties,
+                            "total_value": contract.total_value
+                        },
+                        "chunks": [],
+                        "max_similarity": 0
+                    }
+            
+            if contract_id in results_by_contract:
+                results_by_contract[contract_id]["chunks"].append({
+                    "text": chunk["text_chunk"][:300] + "..." if len(chunk["text_chunk"]) > 300 else chunk["text_chunk"],
+                    "similarity": chunk["similarity"]
+                })
+                results_by_contract[contract_id]["max_similarity"] = max(
+                    results_by_contract[contract_id]["max_similarity"],
+                    chunk["similarity"]
+                )
+        
+        # Sort by similarity
+        results = sorted(
+            results_by_contract.values(),
+            key=lambda x: x["max_similarity"],
+            reverse=True
+        )
+        
+        return {
+            "query": query,
+            "results": results,
+            "total_results": len(results)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/contracts/{contract_id}/summary/ai")
+async def get_ai_contract_summary(
+    contract_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get AI-generated summary of contract"""
+    try:
+        enhanced_rag = EnhancedRAGEngine()
+        summary = enhanced_rag.get_contract_summary(contract_id)
+        
+        if "error" in summary:
+            raise HTTPException(status_code=404, detail=summary["error"])
+        
+        return summary
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

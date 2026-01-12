@@ -1,21 +1,33 @@
 import openai
 import os
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional
 import json
 import PyPDF2
 import re
 from io import BytesIO
 from openai import OpenAI
 from datetime import datetime
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Add imports at the top
+from .table_extractor import TableExtractor
+import hashlib
 
 class ContractProcessor:
     def __init__(self):
-        # Update the system prompt in ContractProcessor.__init__():
-
+        # Initialize table extractor
+        self.table_extractor = TableExtractor()
+        
+        # Update system prompt to be more specific about table handling
         self.system_prompt = """You are an Enterprise Contract Intelligence Agent. Extract ALL information from contracts.
 
+        IMPORTANT: 
+        1. Pay special attention to tables - they contain critical information
+        2. Tables have already been extracted separately and will be provided to you
+        3. Focus on interpreting and structuring the table data
+        4. For payment schedules, deliverables, reporting requirements, etc., use the provided table data
+        
         IMPORTANT EXTRACTIONS:
         1. Extract signatories with names, titles, and signatures
         2. Extract ALL parties with full legal names
@@ -25,16 +37,16 @@ class ContractProcessor:
            - All parties involved
            - Contract type and subtype
            - Effective and expiration dates
-
-        INSTRUCTIONS:
-        1. Extract EVERY section, clause, term, and detail you find in the contract
-        2. If something doesn't fit predefined categories, create new categories
-        3. For tables (like payment schedules, deliverables, milestones), extract ALL data
-        4. For dates, convert to YYYY-MM-DD format
-        5. For monetary values, extract both amount and currency
-        6. For parties, extract FULL legal names
-        7. Preserve the original wording and structure when possible
-
+        
+        TABLES PROVIDED SEPARATELY:
+        You will receive table data in a structured format. Use this data to populate:
+        - Payment schedules
+        - Deliverables
+        - Budget items
+        - Reporting requirements
+        - Personnel assignments
+        - Compliance requirements
+        
         Return ONLY valid JSON with this structure:
         {
             "contract_type": "type of contract",
@@ -48,107 +60,33 @@ class ContractProcessor:
                 "execution_date": "YYYY-MM-DD",
                 "termination_date": "YYYY-MM-DD",
                 "renewal_date": "YYYY-MM-DD",
-                "notice_period_days": 30,
-                "other_dates": {
-                    "date_description": "YYYY-MM-DD"
-                }
+                "notice_period_days": 30
             },
             
             "financial": {
                 "total_value": 100000,
                 "currency": "USD",
                 "payment_terms": "Net 30",
-                "billing_frequency": "Monthly",
-                "late_payment_fee": "1.5% per month",
-                "advance_payment": 0.3,
-                "retention_amount": 0.1,
-                "other_financial_terms": {}
+                "billing_frequency": "Monthly"
             },
             
-            "payment_schedule": [
-                {
-                    "milestone": "Upon Signing",
-                    "percentage": 30,
-                    "amount": 30000,
-                    "due_date": "YYYY-MM-DD",
-                    "conditions": "None"
-                }
-            ],
-            
-            "deliverables": [
-                {
-                    "item": "Software Implementation",
-                    "due_date": "YYYY-MM-DD",
-                    "milestone": "Phase 1",
-                    "acceptance_criteria": "Client sign-off",
-                    "status": "Pending"
-                }
-            ],
-            
-            "service_levels": {
-                "uptime": {
-                    "target": "99.9%",
-                    "measurement_period": "Monthly",
-                    "remedies": "Service credit"
-                }
-            },
-            
-            "clauses": {
-                "confidentiality": {
-                    "text": "Full clause text here...",
-                    "duration_years": 5,
-                    "exceptions": "Public information",
-                    "category": "Legal"
-                },
-                "indemnification": {
-                    "text": "Full clause text here...",
-                    "scope": "Third-party claims",
-                    "limitations": "Direct damages only",
-                    "category": "Risk"
-                },
-                "termination": {
-                    "text": "Full clause text here...",
-                    "notice_period": 30,
-                    "causes": ["Breach", "Insolvency"],
-                    "category": "Administrative"
-                }
-            },
-            
-            "tables_and_schedules": {
-                "payment_schedule": "Full table text or structured data",
-                "deliverables_schedule": "Full table text or structured data",
-                "personnel_assignment": "Full table text or structured data"
+            "tables_summary": {
+                "payment_schedules_count": 1,
+                "deliverables_count": 3,
+                "budget_items_count": 5,
+                "reporting_requirements_count": 2
             },
             
             "key_fields": {
                 "contract_value": {
                     "value": "100,000 USD",
-                    "data_type": "currency",
-                    "confidence": 0.95,
                     "source_section": "Financial Terms"
-                },
-                "governing_law": {
-                    "value": "State of Delaware",
-                    "data_type": "text",
-                    "confidence": 0.98,
-                    "source_section": "Legal Provisions"
                 }
             },
             
             "risk_indicators": {
                 "auto_renewal": true,
-                "unlimited_liability": false,
-                "penalty_clauses": true,
-                "confidentiality_period_years": 5,
-                "termination_for_convenience": true
-            },
-            
-            "compliance_requirements": {
-                "insurance_required": true,
-                "minimum_coverage": "1,000,000 USD",
-                "audit_rights": true,
-                "audit_frequency": "Annually",
-                "reporting_requirements": ["Monthly", "Quarterly", "Annually"]
+                "unlimited_liability": false
             },
             
             "contact_information": {
@@ -156,97 +94,539 @@ class ContractProcessor:
                     {
                         "name": "John Doe",
                         "title": "CEO",
-                        "email": "john@company.com",
-                        "signature_date": "YYYY-MM-DD"
-                    }
-                ],
-                "administrative_contacts": [
-                    {
-                        "type": "Billing",
-                        "name": "Jane Smith",
-                        "email": "billing@company.com",
-                        "phone": "+1-234-567-8900"
+                        "email": "john@company.com"
                     }
                 ]
             },
             
-            "attachments_and_exhibits": [
-                {
-                    "name": "Exhibit A - Scope of Work",
-                    "reference": "Attached",
-                    "description": "Detailed project scope"
-                }
-            ],
-            
-            "miscellaneous": {
-                "document_version": "2.1",
-                "number_of_pages": 25,
-                "language": "English",
-                "has_amendments": false,
-                "amendment_history": []
-            },
-            
-            "extracted_sections": {
-                "section_name": {
-                    "text": "Full section text",
-                    "page_number": 5,
-                    "category": "category",
-                    "importance": "high/medium/low"
-                }
-            },
-            
-            "metadata": {
-                "extraction_completeness": 0.95,
-                "unstructured_content_preserved": true,
-                "tables_extracted": 2,
-                "sections_identified": 15
-            },
-            
-            "confidence_score": 0.95,
-            "risk_score": 0.3
+            "extraction_notes": [
+                "Tables processed separately",
+                "Payment schedule extracted from page 3"
+            ]
         }
-
+        
         IMPORTANT: 
-        - Extract ALL tables, schedules, and attachments
-        - If you see "REPORTING & PAYMENT SCHEDULE", extract it completely
-        - For payment schedules, extract all rows with amounts, dates, and conditions
-        - For reporting requirements, extract frequency, format, and recipients
-        - Preserve original wording for complex clauses
-        - Don't omit any information - include everything you find"""
+        - When you see table data provided, incorporate it into your response
+        - Mark any ambiguities or unclear sections
+        - Preserve all extracted information"""
     
-    def extract_text_from_pdf(self, file_content: bytes) -> str:
-        """Extract text from PDF file - FIXED VERSION"""
-        text = ""
+    def extract_text_from_pdf(self, file_content: bytes) -> Dict[str, Any]:
+        """Enhanced text extraction with table detection"""
+        result = {
+            "text": "",
+            "page_count": 0,
+            "table_sections": [],
+            "signature_sections": []
+        }
+        
         try:
             pdf_file = BytesIO(file_content)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
+            result["page_count"] = len(pdf_reader.pages)
             
             for page_num in range(len(pdf_reader.pages)):
                 page = pdf_reader.pages[page_num]
-                text += page.extract_text() + "\n"
+                page_text = page.extract_text()
                 
+                if page_text:
+                    result["text"] += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
+                    
+                    # Detect table-like sections
+                    if self._detect_tables(page_text):
+                        result["table_sections"].append({
+                            "page": page_num + 1,
+                            "text": page_text[:500]  # First 500 chars
+                        })
+                    
+                    # Detect signature sections
+                    if self._detect_signatures(page_text):
+                        result["signature_sections"].append({
+                            "page": page_num + 1,
+                            "text": page_text
+                        })
+                        
         except Exception as e:
             print(f"Error extracting text from PDF: {e}")
             
-        return text
+        return result
     
     def _detect_tables(self, text: str) -> bool:
         """Detect if text contains table-like structures"""
-        # Simple table detection
-        lines = text.split('\n')
-        table_patterns = ['|', '\t', '  ', '    ']
-        for line in lines:
-            if any(pattern in line for pattern in table_patterns):
+        # Check for table patterns
+        table_patterns = [
+            r'\|\s*[\w\s]+\s*\|',  # Pipe separators
+            r'\s{4,}[\w\s]+\s{4,}',  # Multiple spaces as column separators
+            r'[-]+\s+[-]+',  # Horizontal lines
+            r'\s*\w+\s*\t\s*\w+',  # Tab separators
+        ]
+        
+        for pattern in table_patterns:
+            if re.search(pattern, text):
                 return True
+        
+        # Check for tabular keywords
+        table_keywords = ['table', 'schedule', 'exhibit', 'attachment', 'appendix']
+        text_lower = text.lower()
+        
+        # Check for column headers
+        if any(keyword in text_lower for keyword in table_keywords):
+            lines = text.split('\n')
+            # Look for lines with consistent spacing
+            for line in lines:
+                if re.match(r'^\s*[\w\s]+\s{3,}[\w\s]+\s{3,}', line):
+                    return True
+        
         return False
     
     def _detect_signatures(self, text: str) -> bool:
         """Detect signature-related text"""
-        signature_keywords = ['signature', 'signed', 'executed', 'witness', 'notary']
+        signature_keywords = [
+            'signature', 'signed', 'executed', 'witness', 'notary',
+            'in witness whereof', 'authorized signatory', 'duly authorized'
+        ]
         text_lower = text.lower()
         return any(keyword in text_lower for keyword in signature_keywords)
     
+    def process_contract(self, file_content: bytes, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Enhanced contract processing with table extraction"""
+        try:
+            print("Starting enhanced contract processing...")
+            
+            # Step 1: Extract text from PDF
+            print("Step 1: Extracting text from PDF...")
+            text_result = self.extract_text_from_pdf(file_content)
+            plain_text = text_result["text"]
+            
+            if len(plain_text.strip()) < 100:
+                print("Warning: Very little text extracted, trying alternative extraction...")
+                # Fallback extraction method
+                plain_text = self._fallback_text_extraction(file_content)
+            
+            # Step 2: Extract tables using Camelot
+            print("Step 2: Extracting tables with Camelot...")
+            tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
+            
+            # Step 3: Structure table data
+            print("Step 3: Structuring table data...")
+            structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
+            
+            # Step 4: Prepare context for OpenAI
+            print("Step 4: Preparing context for OpenAI...")
+            context = self._prepare_llm_context(plain_text, structured_tables, tables_data)
+            
+            # Step 5: Process with OpenAI
+            print("Step 5: Processing with OpenAI...")
+            llm_result = self._process_with_openai_simple(context)
+            
+            # Step 6: Combine results
+            print("Step 6: Combining results...")
+            combined_result = self._combine_extractions(llm_result, structured_tables, tables_data)
+            
+            # Step 7: Calculate metrics
+            print("Step 7: Calculating metrics...")
+            combined_result = self._add_metrics(combined_result, structured_tables)
+            
+            # Add metadata
+            if metadata:
+                combined_result["metadata"] = {
+                    **combined_result.get("metadata", {}),
+                    **metadata,
+                    "processing_steps": ["text_extraction", "table_extraction", "llm_processing"],
+                    "table_count": tables_data.get("total_tables", 0),
+                    "page_count": text_result.get("page_count", 0),
+                    "extraction_complete": True
+                }
+            
+            print("Contract processing completed successfully!")
+            return combined_result
+            
+        except Exception as e:
+            print(f"Error in enhanced contract processing: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._get_enhanced_fallback_extraction(file_content)
+    
+    def _prepare_llm_context(self, plain_text: str, structured_tables: Dict, tables_data: Dict) -> str:
+        """Prepare context for LLM processing"""
+        # Truncate text if too long
+        max_text_length = 10000
+        if len(plain_text) > max_text_length:
+            plain_text = plain_text[:max_text_length] + "... [truncated]"
         
+        # Create table summary
+        table_summary = "EXTRACTED TABLES DATA:\n\n"
+        
+        if structured_tables.get("payment_schedule"):
+            table_summary += f"PAYMENT SCHEDULE ({len(structured_tables['payment_schedule'])} items):\n"
+            for payment in structured_tables["payment_schedule"][:5]:  # Show first 5
+                table_summary += f"  - {payment.get('description', 'N/A')}: {payment.get('amount', 'N/A')} due {payment.get('due_date', 'N/A')}\n"
+        
+        if structured_tables.get("deliverables"):
+            table_summary += f"\nDELIVERABLES ({len(structured_tables['deliverables'])} items):\n"
+            for deliverable in structured_tables["deliverables"][:5]:
+                table_summary += f"  - {deliverable.get('item', 'N/A')}: Due {deliverable.get('due_date', 'N/A')}\n"
+        
+        if structured_tables.get("reporting_requirements"):
+            table_summary += f"\nREPORTING REQUIREMENTS ({len(structured_tables['reporting_requirements'])} items):\n"
+            for report in structured_tables["reporting_requirements"][:5]:
+                table_summary += f"  - {report.get('type', 'N/A')}: {report.get('frequency', 'N/A')}\n"
+        
+        context = f"""
+        CONTRACT TEXT:
+        {plain_text}
+        
+        {table_summary}
+        
+        ADDITIONAL TABLES FOUND: {tables_data.get('total_tables', 0)} total tables
+        TABLE TYPES: {', '.join(tables_data.get('tables_by_type', {}).keys())}
+        
+        INSTRUCTIONS:
+        1. Extract all key information from the contract text above
+        2. Use the provided table data to populate structured fields
+        3. Focus on accuracy and completeness
+        4. Return only valid JSON
+        """
+        
+        return context
+    
+    # def _process_with_openai_simple(self, context: str) -> Dict[str, Any]:
+    #     """Process context with OpenAI using simple client"""
+    #     try:
+    #         # Get API key directly from environment
+    #         api_key = os.getenv("OPENAI_API_KEY")
+    #         if not api_key:
+    #             print("Warning: OPENAI_API_KEY not found in environment")
+    #             return self._create_basic_extraction_from_context(context)
+            
+    #         # Create client with minimal configuration
+    #         try:
+    #             client = OpenAI(api_key=api_key)
+    #         except Exception as client_error:
+    #             print(f"Failed to create OpenAI client: {client_error}")
+    #             return self._create_basic_extraction_from_context(context)
+            
+    #         response = client.chat.completions.create(
+    #             model="gpt-4-turbo-preview",
+    #             messages=[
+    #                 {"role": "system", "content": self.system_prompt},
+    #                 {"role": "user", "content": context}
+    #             ],
+    #             temperature=0.1,
+    #             max_tokens=4000,
+    #             response_format={"type": "json_object"}
+    #         )
+            
+    #         return json.loads(response.choices[0].message.content)
+            
+    #     except Exception as e:
+    #         print(f"Error processing with OpenAI: {e}")
+    #         print("Using fallback extraction...")
+    #         return self._create_basic_extraction_from_context(context)
+    def _process_with_openai_simple(self, context: str) -> Dict[str, Any]:
+        """Process context with OpenAI using simple client"""
+        try:
+            # Get API key directly from environment
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                print("Warning: OPENAI_API_KEY not found in environment")
+                return self._create_basic_extraction_from_context(context)
+            
+            # Create client with minimal configuration - FIXED VERSION
+            try:
+                # Use the simplest possible client initialization
+                from openai import OpenAI
+                client = OpenAI(
+                    api_key=api_key,
+                    # Remove any proxy settings that might be causing issues
+                )
+            except Exception as client_error:
+                print(f"Failed to create OpenAI client: {client_error}")
+                print("Trying alternative client creation...")
+                # Try even simpler approach
+                client = OpenAI(api_key=api_key)
+            
+            print("OpenAI client created successfully, sending request...")
+            
+            response = client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": context}
+                ],
+                temperature=0.1,
+                max_tokens=4000,
+                response_format={"type": "json_object"}
+            )
+            
+            print("OpenAI response received successfully")
+            return json.loads(response.choices[0].message.content)
+            
+        except Exception as e:
+            print(f"Error processing with OpenAI: {e}")
+            print("Using fallback extraction...")
+            return self._create_basic_extraction_from_context(context)
+            
+    def _create_basic_extraction_from_context(self, context: str) -> Dict[str, Any]:
+        """Create basic extraction when OpenAI fails"""
+        import re
+        
+        # Extract parties from context
+        parties = []
+        if "PARTY" in context.upper() or "BETWEEN" in context.upper():
+            # Look for party patterns
+            party_patterns = [
+                r"between\s+([^,]+)\s+and\s+([^,.]+)",
+                r"PARTIES:\s*(.+)",
+                r"1\.\s*([^:]+):",
+            ]
+            
+            for pattern in party_patterns:
+                matches = re.findall(pattern, context, re.IGNORECASE | re.MULTILINE)
+                for match in matches:
+                    if isinstance(match, tuple):
+                        for party in match:
+                            if party.strip():
+                                parties.append(party.strip())
+                    else:
+                        if match.strip():
+                            parties.append(match.strip())
+        
+        # Extract contract value
+        value = None
+        value_matches = re.findall(r'\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', context)
+        if value_matches:
+            try:
+                # Take the largest value found
+                values = []
+                for match in value_matches:
+                    try:
+                        values.append(float(match.replace(',', '')))
+                    except:
+                        pass
+                if values:
+                    value = max(values)
+            except:
+                pass
+        
+        # Extract dates
+        dates = {}
+        date_patterns = [
+            r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
+            r'(\d{2}/\d{2}/\d{4})',  # MM/DD/YYYY
+        ]
+        
+        for pattern in date_patterns:
+            matches = re.findall(pattern, context)
+            if matches:
+                dates["execution_date"] = matches[0]
+                if len(matches) > 1:
+                    dates["effective_date"] = matches[1]
+                if len(matches) > 2:
+                    dates["expiration_date"] = matches[2]
+                break
+        
+        return {
+            "contract_type": "Unknown",
+            "contract_subtype": None,
+            "master_agreement_id": None,
+            "parties": list(set(parties)) if parties else ["Unknown Party 1", "Unknown Party 2"],
+            "dates": dates if dates else {},
+            "financial": {
+                "total_value": value,
+                "currency": "USD"
+            },
+            "contact_information": {
+                "signatories": []
+            },
+            "key_fields": {},
+            "risk_indicators": {},
+            "confidence_score": 0.5,
+            "extraction_notes": ["Basic extraction due to OpenAI API limitations"]
+        }
+    
+    def _combine_extractions(self, llm_result: Dict, structured_tables: Dict, tables_data: Dict) -> Dict[str, Any]:
+        """Combine LLM extraction with structured table data"""
+        # Start with LLM result
+        combined = llm_result.copy() if llm_result else {}
+        
+        # Add structured table data
+        if structured_tables:
+            if "payment_schedule" not in combined:
+                combined["payment_schedule"] = []
+            combined["payment_schedule"].extend(structured_tables.get("payment_schedule", []))
+            
+            if "deliverables" not in combined:
+                combined["deliverables"] = []
+            combined["deliverables"].extend(structured_tables.get("deliverables", []))
+            
+            if "budget" not in combined:
+                combined["budget"] = []
+            combined["budget"].extend(structured_tables.get("budget", []))
+            
+            if "reporting_requirements" not in combined:
+                combined["reporting_requirements"] = []
+            combined["reporting_requirements"].extend(structured_tables.get("reporting_requirements", []))
+            
+            if "personnel" not in combined:
+                combined["personnel"] = []
+            combined["personnel"].extend(structured_tables.get("personnel", []))
+            
+            if "signatories" not in combined:
+                combined["signatories"] = []
+            combined["signatories"].extend(structured_tables.get("signatories", []))
+            
+            if "compliance" not in combined:
+                combined["compliance"] = []
+            combined["compliance"].extend(structured_tables.get("compliance", []))
+        
+        # Add table metadata
+        combined["extracted_tables"] = {
+            "total_tables": tables_data.get("total_tables", 0),
+            "tables_by_type": tables_data.get("tables_by_type", {}),
+            "extraction_method": "camelot"
+        }
+        
+        return combined
+    
+    def _add_metrics(self, extraction: Dict, structured_tables: Dict) -> Dict[str, Any]:
+        """Add extraction metrics"""
+        # Calculate confidence based on extracted data
+        confidence_factors = []
+        
+        # Check for essential fields
+        essential_fields = ["contract_type", "parties", "dates"]
+        essential_count = sum(1 for field in essential_fields if extraction.get(field))
+        confidence_factors.append(essential_count / len(essential_fields) * 0.4)
+        
+        # Check for financial data
+        if extraction.get("financial", {}).get("total_value"):
+            confidence_factors.append(0.2)
+        
+        # Check for extracted tables
+        table_data_present = any([
+            structured_tables.get("payment_schedule"),
+            structured_tables.get("deliverables"),
+            structured_tables.get("budget")
+        ])
+        if table_data_present:
+            confidence_factors.append(0.2)
+        
+        # Check for contact information
+        if extraction.get("contact_information", {}).get("signatories"):
+            confidence_factors.append(0.1)
+        
+        if extraction.get("key_fields"):
+            confidence_factors.append(0.1)
+        
+        # Calculate final confidence
+        confidence = sum(confidence_factors) if confidence_factors else 0.5
+        extraction["confidence_score"] = min(confidence, 0.99)
+        
+        # Calculate risk score
+        extraction["risk_score"] = self._calculate_enhanced_risk_score(extraction)
+        
+        return extraction
+    
+    def _calculate_enhanced_risk_score(self, extraction: Dict) -> float:
+        """Enhanced risk score calculation"""
+        risk_score = 0.0
+        
+        # Financial risk
+        financial = extraction.get("financial", {})
+        total_value = financial.get("total_value", 0)
+        if isinstance(total_value, str):
+            try:
+                total_value = float(''.join(filter(str.isdigit, str(total_value))))
+            except:
+                total_value = 0
+        
+        if total_value > 1000000:
+            risk_score += 0.2
+        elif total_value > 500000:
+            risk_score += 0.1
+        
+        # Date risk
+        dates = extraction.get("dates", {})
+        if dates.get("expiration_date"):
+            try:
+                exp_date = datetime.fromisoformat(dates["expiration_date"].replace('Z', '+00:00'))
+                days_remaining = (exp_date - datetime.now()).days
+                if days_remaining < 30:
+                    risk_score += 0.3
+                elif days_remaining < 90:
+                    risk_score += 0.2
+                elif days_remaining < 180:
+                    risk_score += 0.1
+            except:
+                pass
+        
+        # Contract type risk
+        contract_type = str(extraction.get("contract_type", "")).lower()
+        high_risk_types = ["indemnity", "guarantee", "surety", "bond", "insurance"]
+        if any(risk_type in contract_type for risk_type in high_risk_types):
+            risk_score += 0.2
+        
+        # Auto-renewal risk
+        if extraction.get("risk_indicators", {}).get("auto_renewal"):
+            risk_score += 0.1
+        
+        # Normalize
+        return min(risk_score, 1.0)
+    
+    def _fallback_text_extraction(self, file_content: bytes) -> str:
+        """Fallback text extraction method"""
+        try:
+            import pdfplumber
+            
+            with pdfplumber.open(BytesIO(file_content)) as pdf:
+                text = ""
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                return text
+        except Exception as e:
+            print(f"Fallback extraction failed: {e}")
+            return "Text extraction failed"
+    
+    def _get_enhanced_fallback_extraction(self, file_content: bytes) -> Dict[str, Any]:
+        """Enhanced fallback extraction with table data"""
+        # Try to at least extract tables
+        try:
+            tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
+            structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
+        except:
+            tables_data = {"total_tables": 0, "tables": []}
+            structured_tables = {}
+        
+        return {
+            "contract_type": "Unknown",
+            "contract_subtype": None,
+            "master_agreement_id": None,
+            "parties": [],
+            "dates": {},
+            "financial": {},
+            "payment_schedule": structured_tables.get("payment_schedule", []),
+            "deliverables": structured_tables.get("deliverables", []),
+            "budget": structured_tables.get("budget", []),
+            "reporting_requirements": structured_tables.get("reporting_requirements", []),
+            "signatories": structured_tables.get("signatories", []),
+            "clauses": {},
+            "key_fields": {},
+            "extracted_tables": {
+                "total_tables": tables_data.get("total_tables", 0),
+                "tables_by_type": tables_data.get("tables_by_type", {}),
+                "extraction_method": "camelot_fallback"
+            },
+            "confidence_score": 0.3,
+            "risk_score": 0.5,
+            "metadata": {
+                "extraction_method": "fallback",
+                "has_tables": tables_data.get("total_tables", 0) > 0
+            }
+        }
+    
+    # Keep existing methods from original code
     def _calculate_risk_score(self, extraction: Dict[str, Any]) -> float:
         """Calculate risk score based on extracted factors"""
         risk_score = 0.0
@@ -492,7 +872,7 @@ class ContractProcessor:
         
         return tables
 
-    def process_contract(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    def process_contract_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """Process contract text with enhanced table extraction and chunking for large documents"""
         try:
             # Extract tables before sending to OpenAI
@@ -546,20 +926,26 @@ class ContractProcessor:
                     Document text: {chunk[:6000]}"""
                     
                     try:
-                        response = client.chat.completions.create(
-                            model="gpt-4-turbo-preview",
-                            messages=[
-                                {"role": "system", "content": self.system_prompt},
-                                {"role": "user", "content": chunk_prompt}
-                            ],
-                            temperature=0.1,
-                            max_tokens=1500,  # Conservative for chunks
-                            response_format={"type": "json_object"}
-                        )
-                        
-                        extracted = json.loads(response.choices[0].message.content)
-                        all_extracted_data.append(extracted)
-                        
+                        # Simple OpenAI client
+                        api_key = os.getenv("OPENAI_API_KEY")
+                        if api_key:
+                            client = OpenAI(api_key=api_key)
+                            response = client.chat.completions.create(
+                                model="gpt-4-turbo-preview",
+                                messages=[
+                                    {"role": "system", "content": self.system_prompt},
+                                    {"role": "user", "content": chunk_prompt}
+                                ],
+                                temperature=0.1,
+                                max_tokens=1500,
+                                response_format={"type": "json_object"}
+                            )
+                            
+                            extracted = json.loads(response.choices[0].message.content)
+                            all_extracted_data.append(extracted)
+                        else:
+                            print("No OpenAI API key found for chunk processing")
+                            
                     except Exception as e:
                         print(f"Error processing chunk {i+1}: {str(e)}")
                         continue
@@ -597,6 +983,13 @@ class ContractProcessor:
                 {text[:12000]}  # Leave room for response
                 """
                 
+                # Simple OpenAI client
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    print("No OpenAI API key found")
+                    return self._get_fallback_extraction()
+                
+                client = OpenAI(api_key=api_key)
                 response = client.chat.completions.create(
                     model="gpt-4-turbo-preview",
                     messages=[
@@ -604,7 +997,7 @@ class ContractProcessor:
                         {"role": "user", "content": context}
                     ],
                     temperature=0.1,
-                    max_tokens=4000,  # Increased for detailed extraction
+                    max_tokens=4000,
                     response_format={"type": "json_object"}
                 )
                 
@@ -757,6 +1150,14 @@ class ContractProcessor:
                 "recommendations": ["Review recommendations"]
             }}
             """
+            
+            # Simple OpenAI client
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                print("No OpenAI API key found for text comparison")
+                return {"summary": "Comparison requires OpenAI API key", "changes": []}
+            
+            client = OpenAI(api_key=api_key)
             
             response = client.chat.completions.create(
                 model="gpt-4-turbo-preview",

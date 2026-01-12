@@ -1,3 +1,5 @@
+# C:\saple.ai\OCR\backend\app\models.py
+
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -16,6 +18,8 @@ class Document(Base):
     parent_document_id = Column(Integer, ForeignKey('documents.id'), nullable=True)
     is_amendment = Column(Boolean, default=False)
     amendment_type = Column(String, nullable=True)
+    processing_attempts = Column(Integer, default=0)
+    last_processing_error = Column(Text, nullable=True)
     
     # Relationships
     contracts = relationship("Contract", back_populates="document")
@@ -66,10 +70,13 @@ class Contract(Base):
     risk_score = Column(Float, default=0.0)
     risk_factors = Column(JSON, nullable=True)
     
-    # Clauses and Fields - CHANGED: metadata -> extracted_metadata
+    # Clauses and Fields
     clauses = Column(JSON)
     key_fields = Column(JSON)
-    extracted_metadata = Column(JSON, nullable=True)  # Changed from 'metadata' to 'extracted_metadata'
+    extracted_metadata = Column(JSON, nullable=True)
+    
+    # NEW: Table extraction data
+    extracted_tables_data = Column(JSON, nullable=True)  # Add this line
     
     # Tracking
     extraction_date = Column(DateTime(timezone=True), server_default=func.now())
@@ -86,30 +93,16 @@ class Contract(Base):
     document = relationship("Document", back_populates="contracts")
     previous_version = relationship("Contract", remote_side=[id], backref="next_versions")
 
-class ContractDelta(Base):
-    __tablename__ = "contract_deltas"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    contract_id = Column(Integer, ForeignKey('contracts.id'), index=True)
-    previous_version_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)
-    field_name = Column(String, index=True)
-    old_value = Column(JSON, nullable=True)
-    new_value = Column(JSON, nullable=True)
-    change_type = Column(String)
-    confidence_change = Column(Float, nullable=True)
-    detected_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationship
-    contract = relationship("Contract", foreign_keys=[contract_id])
-
 class RAGEmbedding(Base):
     __tablename__ = "rag_embeddings"
     
     id = Column(Integer, primary_key=True, index=True)
     contract_id = Column(Integer, ForeignKey('contracts.id'), index=True)
     text_chunk = Column(Text)
-    embedding = Column(JSON)
-    chunk_metadata = Column(JSON)  # Already using chunk_metadata, not metadata
+    embedding = Column(JSON)  # Keep for reference but won't be used for search
+    chunk_metadata = Column(JSON)
+    chroma_chunk_id = Column(String(255), nullable=True)  # Reference to ChromaDB
+    vector_db_type = Column(String(50), default='chromadb')
     version = Column(Integer, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
