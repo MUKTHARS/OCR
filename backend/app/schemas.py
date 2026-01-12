@@ -32,7 +32,7 @@ class Signatory(BaseModel):
         return v
 
 class Contact(BaseModel):
-    type: str
+    type: Optional[str] = None
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
