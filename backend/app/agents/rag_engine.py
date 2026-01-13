@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 class RAGEngine:
     def __init__(self):
         self.embedding_model = "text-embedding-3-small"
-        self.gpt_model = "gpt-4-turbo-preview"
+        self.gpt_model = "gpt-4o-mini"
         self._client = None
     
     @property

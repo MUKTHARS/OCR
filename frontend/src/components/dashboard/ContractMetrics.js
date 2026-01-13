@@ -392,12 +392,12 @@ const ContractDistribution = ({ summary, contracts: initialContracts, onViewCont
                     
                     <Box sx={{ mb: 1 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Typography variant="caption" color="text.secondary">
+                        {/* <Typography variant="caption" color="text.secondary">
                           Allocation
                         </Typography>
                         <Typography variant="caption" fontWeight={600}>
                           {percentage.toFixed(1)}%
-                        </Typography>
+                        </Typography> */}
                       </Box>
                       <LinearProgress 
                         variant="determinate" 
@@ -831,7 +831,7 @@ const ContractDistribution = ({ summary, contracts: initialContracts, onViewCont
 const ContractMetrics = ({ summary, contracts }) => {
   return (
     <Grid container spacing={3} sx={{ mb: 4 }}>
-      <Grid item xs={12} lg={7.5}>
+      <Grid item xs={12} lg={12}>
         <ContractDistribution 
           summary={summary} 
           contracts={contracts} 
@@ -841,9 +841,9 @@ const ContractMetrics = ({ summary, contracts }) => {
           }}
         />
       </Grid>
-      <Grid item xs={12} lg={4.5}>
+      {/* <Grid item xs={12} lg={4.5}>
         <RiskDistribution contracts={contracts} />
-      </Grid>
+      </Grid> */}
     </Grid>
   );
 };

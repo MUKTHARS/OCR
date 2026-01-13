@@ -184,7 +184,7 @@ function App() {
         return (
           <DashboardLayout
             title="Contract Intelligence Dashboard"
-            subtitle="Real-time insights and analytics for your contract portfolio"
+            // subtitle="Real-time insights and analytics for your contract portfolio"
             summary={summary}
             contracts={existingContracts}
             loading={loading}

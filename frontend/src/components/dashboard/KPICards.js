@@ -122,9 +122,9 @@ const KPICard = ({
                 </Typography>
               </>
             )}
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+            {/* <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
               from last period
-            </Typography>
+            </Typography> */}
           </Box>
         )}
       </CardContent>
@@ -193,7 +193,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
     {
       title: 'Total Portfolio Value',
       value: summary?.total_value || 0,
-      change: 12.5,
+      // change: 12.5,
       icon: MonetizationOnOutlined,
       color: 'success',
       format: 'currency',
@@ -202,7 +202,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
     {
       title: 'Total Funding',
       value: fundingMetrics.totalFunding,
-      change: 12.5,
+      // change: 12.5,
       icon: AccountBalanceOutlined,
       color: 'primary',
       format: 'currency',
@@ -211,7 +211,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
     {
       title: 'Funds Received',
       value: fundingMetrics.totalReceived,
-      change: 8.2,
+      // change: 8.2,
       icon: PaidOutlined,
       color: 'success',
       format: 'currency',
@@ -220,7 +220,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
     {
       title: 'Remaining Funds',
       value: fundingMetrics.remainingFunds,
-      change: -4.3,
+      // change: -4.3,
       icon: PendingActionsOutlined,
       color: 'warning',
       format: 'currency',
@@ -231,7 +231,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
     {
       title: 'Needs Legal Review',
       value: summary?.needs_review || 0,
-      change: 15.3,
+      // change: 15.3,
       icon: GavelOutlined,
       color: 'info',
       subtitle: 'Pending attention',
@@ -240,7 +240,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
     {
       title: 'Active Grants',
       value: contracts.filter(c => !c.termination_date).length,
-      change: 5.2,
+      // change: 5.2,
       icon: AccountBalanceOutlined,
       color: 'primary',
       subtitle: `${contracts.length} total grants`,
@@ -249,7 +249,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
         {
       title: 'High Risk Contracts',
       value: summary?.high_risk || 0,
-      change: -4.2,
+      // change: -4.2,
       icon: WarningAmberOutlined,
       color: 'error',
       subtitle: summary?.total_contracts ? 
@@ -259,7 +259,7 @@ const KPICards = ({ summary, loading, contracts = [] }) => {
     {
       title: 'Expiring Soon',
       value: summary?.expiring_soon || 0,
-      change: 8.7,
+      // change: 8.7,
       icon: ScheduleOutlined,
       color: 'warning',
       subtitle: 'Within next 90 days',

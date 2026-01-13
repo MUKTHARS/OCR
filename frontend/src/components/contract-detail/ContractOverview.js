@@ -307,7 +307,7 @@ const ContractOverview = ({ contract }) => {
 
       {contract.risk_factors && contract.risk_factors.length > 0 && (
         <Grid item xs={12}>
-          <RiskFactorsCard riskFactors={contract.risk_factors} />
+          {/* <RiskFactorsCard riskFactors={contract.risk_factors} /> */}
         </Grid>
       )}
     </Grid>

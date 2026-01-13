@@ -203,7 +203,7 @@ class ChromaRAGEngine:
             Answer:"""
             
             response = client.chat.completions.create(
-                model="gpt-4-turbo-preview",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are a contract analysis assistant. Provide accurate, specific answers based only on the provided context."},
                     {"role": "user", "content": prompt}
@@ -278,7 +278,7 @@ class ChromaRAGEngine:
     #         Answer:"""
             
     #         response = client.chat.completions.create(
-    #             model="gpt-4-turbo-preview",
+    #             model="gpt-4o-mini",
     #             messages=[
     #                 {"role": "system", "content": "You are a contract analysis assistant. Provide accurate, specific answers based only on the provided context."},
     #                 {"role": "user", "content": prompt}

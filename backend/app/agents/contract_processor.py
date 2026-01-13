@@ -418,7 +418,7 @@ class ContractProcessor:
     #                 # Use older API style as fallback
     #                 import openai_old
     #                 response = openai_old.ChatCompletion.create(
-    #                     model="gpt-4-turbo-preview",
+    #                     model="gpt-4o-mini",
     #                     messages=[
     #                         {"role": "system", "content": self.system_prompt},
     #                         {"role": "user", "content": context}
@@ -438,7 +438,7 @@ class ContractProcessor:
     #         print("Sending request to OpenAI...")
             
     #         response = client.chat.completions.create(
-    #             model="gpt-4-turbo-preview",
+    #             model="gpt-4o-mini",
     #             messages=[
     #                 {"role": "system", "content": self.system_prompt},
     #                 {"role": "user", "content": context}
@@ -486,7 +486,7 @@ class ContractProcessor:
     #             return self._create_basic_extraction_from_context(context)
             
     #         response = client.chat.completions.create(
-    #             model="gpt-4-turbo-preview",
+    #             model="gpt-4o-mini",
     #             messages=[
     #                 {"role": "system", "content": self.system_prompt},
     #                 {"role": "user", "content": context}
@@ -528,7 +528,7 @@ class ContractProcessor:
     #         print("OpenAI client created successfully, sending request...")
             
     #         response = client.chat.completions.create(
-    #             model="gpt-4-turbo-preview",
+    #             model="gpt-4o-mini",
     #             messages=[
     #                 {"role": "system", "content": self.system_prompt},
     #                 {"role": "user", "content": context}
@@ -1370,7 +1370,7 @@ class ContractProcessor:
                         if api_key:
                             client = OpenAI(api_key=api_key)
                             response = client.chat.completions.create(
-                                model="gpt-4-turbo-preview",
+                                model="gpt-4o-mini",
                                 messages=[
                                     {"role": "system", "content": self.system_prompt},
                                     {"role": "user", "content": chunk_prompt}
@@ -1430,7 +1430,7 @@ class ContractProcessor:
                 
                 client = OpenAI(api_key=api_key)
                 response = client.chat.completions.create(
-                    model="gpt-4-turbo-preview",
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": self.system_prompt},
                         {"role": "user", "content": context}
@@ -1599,7 +1599,7 @@ class ContractProcessor:
             client = OpenAI(api_key=api_key)
             
             response = client.chat.completions.create(
-                model="gpt-4-turbo-preview",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are a legal contract comparison expert. Analyze amendments thoroughly."},
                     {"role": "user", "content": prompt}
