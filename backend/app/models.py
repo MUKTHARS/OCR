@@ -121,3 +121,23 @@ class RAGEmbedding(Base):
     
     # Relationship
     contract = relationship("Contract")
+
+
+class ContractAmendment(Base):
+    __tablename__ = "contract_amendments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    parent_contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=False, index=True)
+    amendment_contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=False, index=True)
+    applied_date = Column(DateTime(timezone=True), server_default=func.now())
+    applied_by = Column(String, nullable=True)
+    changes_applied = Column(JSON, nullable=True)
+    version_created = Column(Integer, nullable=False)  # Version number after amendment
+    
+    # Relationships
+    parent_contract = relationship("Contract", foreign_keys=[parent_contract_id])
+    amendment_contract = relationship("Contract", foreign_keys=[amendment_contract_id])
+
+applied_amendments = relationship("ContractAmendment", 
+                                  foreign_keys="ContractAmendment.amendment_contract_id",
+                                  backref="amendment_document")    

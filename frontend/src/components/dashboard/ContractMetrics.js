@@ -323,9 +323,9 @@ const ContractDistribution = ({ summary, contracts: initialContracts, onViewCont
 
     return (
       <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" fontWeight={600} gutterBottom sx={{ mb: 2 }}>
+        {/* <Typography variant="subtitle2" fontWeight={600} gutterBottom sx={{ mb: 2 }}>
           Funding Distribution by Grant Type
-        </Typography>
+        </Typography> */}
         <Grid container spacing={2}>
           {Object.entries(metrics.byType).map(([type, count]) => {
             const typeContracts = contracts.filter(c => c.contract_type === type);
@@ -339,103 +339,103 @@ const ContractDistribution = ({ summary, contracts: initialContracts, onViewCont
               ? (typeFunding / fundingMetrics.totalFunding) * 100 
               : 0;
             
-            return (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={type}>
-                <Paper 
-                  variant="outlined" 
-                  sx={{ 
-                    p: 2, 
-                    borderRadius: 3,
-                    borderColor: 'divider',
-                    borderWidth: 2,
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    transition: 'all 0.2s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                      borderColor: 'primary.light',
-                    }
-                  }}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                    <Box>
-                      <Typography variant="body2" fontWeight={600} color="primary" gutterBottom>
-                        {type}
-                      </Typography>
-                      <Chip 
-                        label={`${count} grant${count !== 1 ? 's' : ''}`}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                    </Box>
-                    <Avatar 
-                      sx={{ 
-                        bgcolor: 'primary.50', 
-                        color: 'primary.main',
-                        width: 40,
-                        height: 40,
-                        fontSize: '1rem',
-                        fontWeight: 600
-                      }}
-                    >
-                      {percentage.toFixed(0)}%
-                    </Avatar>
-                  </Box>
+            // return (
+            //   <Grid item xs={12} sm={6} md={4} lg={3} key={type}>
+            //     <Paper 
+            //       variant="outlined" 
+            //       sx={{ 
+            //         p: 2, 
+            //         borderRadius: 3,
+            //         borderColor: 'divider',
+            //         borderWidth: 2,
+            //         height: '100%',
+            //         display: 'flex',
+            //         flexDirection: 'column',
+            //         transition: 'all 0.2s ease',
+            //         '&:hover': {
+            //           transform: 'translateY(-2px)',
+            //           boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            //           borderColor: 'primary.light',
+            //         }
+            //       }}
+            //     >
+            //       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            //         <Box>
+            //           <Typography variant="body2" fontWeight={600} color="primary" gutterBottom>
+            //             {type}
+            //           </Typography>
+            //           <Chip 
+            //             label={`${count} grant${count !== 1 ? 's' : ''}`}
+            //             size="small"
+            //             color="primary"
+            //             variant="outlined"
+            //           />
+            //         </Box>
+            //         <Avatar 
+            //           sx={{ 
+            //             bgcolor: 'primary.50', 
+            //             color: 'primary.main',
+            //             width: 40,
+            //             height: 40,
+            //             fontSize: '1rem',
+            //             fontWeight: 600
+            //           }}
+            //         >
+            //           {percentage.toFixed(0)}%
+            //         </Avatar>
+            //       </Box>
                   
-                  <Box sx={{ mt: 'auto' }}>
-                    <Typography variant="h5" fontWeight={700} color="text.primary" gutterBottom>
-                      ${typeFunding.toLocaleString()}
-                    </Typography>
+            //       <Box sx={{ mt: 'auto' }}>
+            //         <Typography variant="h5" fontWeight={700} color="text.primary" gutterBottom>
+            //           ${typeFunding.toLocaleString()}
+            //         </Typography>
                     
-                    <Box sx={{ mb: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                        {/* <Typography variant="caption" color="text.secondary">
-                          Allocation
-                        </Typography>
-                        <Typography variant="caption" fontWeight={600}>
-                          {percentage.toFixed(1)}%
-                        </Typography> */}
-                      </Box>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={percentage}
-                        sx={{ 
-                          height: 6,
-                          borderRadius: 3,
-                          bgcolor: 'grey.200',
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 3,
-                            background: 'linear-gradient(90deg, #1a237e 0%, #534bae 100%)',
-                          }
-                        }}
-                      />
-                    </Box>
+            //         <Box sx={{ mb: 1 }}>
+            //           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+            //             {/* <Typography variant="caption" color="text.secondary">
+            //               Allocation
+            //             </Typography>
+            //             <Typography variant="caption" fontWeight={600}>
+            //               {percentage.toFixed(1)}%
+            //             </Typography> */}
+            //           </Box>
+            //           <LinearProgress 
+            //             variant="determinate" 
+            //             value={percentage}
+            //             sx={{ 
+            //               height: 6,
+            //               borderRadius: 3,
+            //               bgcolor: 'grey.200',
+            //               '& .MuiLinearProgress-bar': {
+            //                 borderRadius: 3,
+            //                 background: 'linear-gradient(90deg, #1a237e 0%, #534bae 100%)',
+            //               }
+            //             }}
+            //           />
+            //         </Box>
                     
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          Avg. Grant
-                        </Typography>
-                        <Typography variant="caption" fontWeight={600}>
-                          ${(typeFunding / count).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          New
-                        </Typography>
-                        <Typography variant="caption" fontWeight={600} color="success.main">
-                          {Math.min(count, 3)} this month
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Box>
-                </Paper>
-              </Grid>
-            );
+            //         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+            //           <Box>
+            //             <Typography variant="caption" color="text.secondary" display="block">
+            //               Avg. Grant
+            //             </Typography>
+            //             <Typography variant="caption" fontWeight={600}>
+            //               ${(typeFunding / count).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            //             </Typography>
+            //           </Box>
+            //           <Box sx={{ textAlign: 'right' }}>
+            //             <Typography variant="caption" color="text.secondary" display="block">
+            //               New
+            //             </Typography>
+            //             <Typography variant="caption" fontWeight={600} color="success.main">
+            //               {Math.min(count, 3)} this month
+            //             </Typography>
+            //           </Box>
+            //         </Box>
+            //       </Box>
+            //     </Paper>
+            //   </Grid>
+            // );
           })}
         </Grid>
       </Box>
@@ -483,8 +483,8 @@ const ContractDistribution = ({ summary, contracts: initialContracts, onViewCont
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} />
-            <Typography variant="h6" fontWeight={600}>
+            {/* <AssessmentOutlined sx={{ mr: 1.5, color: 'primary.main' }} /> */}
+            {/* <Typography variant="h6" fontWeight={600}>
               Grant Portfolio Dashboard
             </Typography>
             <Chip 
@@ -492,10 +492,10 @@ const ContractDistribution = ({ summary, contracts: initialContracts, onViewCont
               size="small"
               color="primary"
               sx={{ ml: 2 }}
-            />
+            /> */}
           </Box>
           
-          <Button
+          {/* <Button
             variant="outlined"
             size="small"
             onClick={handleRefresh}
@@ -503,7 +503,7 @@ const ContractDistribution = ({ summary, contracts: initialContracts, onViewCont
             startIcon={<RefreshOutlined />}
           >
             {refreshing ? 'Refreshing...' : 'Refresh'}
-          </Button>
+          </Button> */}
         </Box>
 
         {/* Debug info */}

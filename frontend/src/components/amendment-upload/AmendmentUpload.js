@@ -44,134 +44,280 @@ const AmendmentUpload = ({ onUploadSuccess }) => {
     setActiveStep((prevStep) => prevStep - 1);
   };
 
+
   const pollDocumentStatus = async (documentId, fileName, fileIndex, totalFiles) => {
     let attempts = 0;
     const maxAttempts = 120;
     
     // Initialize status for this file
     setProcessingStatus(prev => ({
-      ...prev,
-      [fileIndex]: {
-        fileName,
-        status: 'uploading',
-        message: 'Uploading to server...',
-        progress: 10
-      }
+        ...prev,
+        [fileIndex]: {
+            fileName,
+            status: 'uploading',
+            message: 'Uploading to server...',
+            progress: 10
+        }
     }));
     
     while (attempts < maxAttempts) {
-      try {
-        attempts++;
-        
-        if (!documentId) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          continue;
-        }
-        
-        const response = await fetch(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/documents/${documentId}/status`
-        );
-        
-        if (response.ok) {
-          const statusData = await response.json();
-          
-          let progress = 10;
-          let message = 'Uploading...';
-          let status = 'uploading';
-          
-          if (statusData.status === "processing") {
-            progress = 30 + Math.min(50, (attempts * 0.5));
-            message = `Processing chunks with AI... (Attempt ${attempts})`;
-            status = 'processing';
+        try {
+            attempts++;
             
-            if (attempts % 5 === 0) {
-              const chunkProgress = Math.min(8, Math.floor(attempts / 5));
-              message = `Processing chunk ${chunkProgress}/8 with AI...`;
+            if (!documentId) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                continue;
             }
-          } else if (statusData.status === "completed") {
-            progress = 100;
-            message = 'Processing complete!';
-            status = 'completed';
+            
+            const response = await fetch(
+                `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/documents/${documentId}/status`
+            );
+            
+            if (response.ok) {
+                const statusData = await response.json();
+                
+                let progress = 10;
+                let message = 'Uploading...';
+                let status = 'uploading';
+                
+                if (statusData.status === "processing") {
+                    progress = 30 + Math.min(50, (attempts * 0.5));
+                    message = `Processing chunks with AI... (Attempt ${attempts})`;
+                    status = 'processing';
+                    
+                    if (attempts % 5 === 0) {
+                        const chunkProgress = Math.min(8, Math.floor(attempts / 5));
+                        message = `Processing chunk ${chunkProgress}/8 with AI...`;
+                    }
+                } else if (statusData.status === "completed") {
+                    progress = 100;
+                    message = 'Processing complete!';
+                    status = 'completed';
+                    
+                    // NEW: Check if amendment was auto-applied
+                    if (statusData.amendment_applied) {
+                        message = 'Amendment processed and auto-applied to parent contract!';
+                    }
+                    
+                    setProcessingStatus(prev => ({
+                        ...prev,
+                        [fileIndex]: {
+                            fileName,
+                            status: 'completed',
+                            message: statusData.amendment_applied ? 
+                                'Amendment processed and auto-applied!' : 
+                                'Amendment processed successfully',
+                            progress: 100,
+                            amendmentApplied: statusData.amendment_applied || false
+                        }
+                    }));
+                    
+                    setCompletedFiles(prev => [...prev, { 
+                        fileName, 
+                        documentId, 
+                        contractId: statusData.contract_id,
+                        amendmentApplied: statusData.amendment_applied || false,
+                        parentUpdated: statusData.parent_updated || false,
+                        newParentVersion: statusData.new_parent_version
+                    }]);
+                    
+                    const newProgress = ((fileIndex + 1) / totalFiles) * 100;
+                    setOverallProgress(newProgress);
+                    
+                    return { 
+                        success: true, 
+                        documentId, 
+                        contractId: statusData.contract_id,
+                        amendmentApplied: statusData.amendment_applied || false
+                    };
+                } else if (statusData.status.includes("failed")) {
+                    setProcessingStatus(prev => ({
+                        ...prev,
+                        [fileIndex]: {
+                            fileName,
+                            status: 'error',
+                            message: `Processing failed: ${statusData.status}`,
+                            progress: 0
+                        }
+                    }));
+                    return { success: false, error: statusData.status };
+                }
+                
+                setProcessingStatus(prev => ({
+                    ...prev,
+                    [fileIndex]: {
+                        fileName,
+                        status,
+                        message,
+                        progress
+                    }
+                }));
+                
+                const fileProgress = (fileIndex / totalFiles) * 100;
+                const currentFileProgress = (progress / 100) * (100 / totalFiles);
+                setOverallProgress(fileProgress + currentFileProgress);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+        } catch (error) {
+            console.log(`Polling attempt ${attempts} failed:`, error.message);
             
             setProcessingStatus(prev => ({
-              ...prev,
-              [fileIndex]: {
-                fileName,
-                status: 'completed',
-                message: 'Amendment processed successfully',
-                progress: 100
-              }
+                ...prev,
+                [fileIndex]: {
+                    fileName,
+                    status: 'error',
+                    message: `Connection error: ${error.message}`,
+                    progress: 0
+                }
             }));
             
-            setCompletedFiles(prev => [...prev, { 
-              fileName, 
-              documentId, 
-              contractId: statusData.contract_id 
-            }]);
-            
-            const newProgress = ((fileIndex + 1) / totalFiles) * 100;
-            setOverallProgress(newProgress);
-            
-            return { success: true, documentId, contractId: statusData.contract_id };
-          } else if (statusData.status.includes("failed")) {
-            setProcessingStatus(prev => ({
-              ...prev,
-              [fileIndex]: {
-                fileName,
-                status: 'error',
-                message: `Processing failed: ${statusData.status}`,
-                progress: 0
-              }
-            }));
-            return { success: false, error: statusData.status };
-          }
-          
-          setProcessingStatus(prev => ({
-            ...prev,
-            [fileIndex]: {
-              fileName,
-              status,
-              message,
-              progress
-            }
-          }));
-          
-          const fileProgress = (fileIndex / totalFiles) * 100;
-          const currentFileProgress = (progress / 100) * (100 / totalFiles);
-          setOverallProgress(fileProgress + currentFileProgress);
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
-        
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-      } catch (error) {
-        console.log(`Polling attempt ${attempts} failed:`, error.message);
-        
-        setProcessingStatus(prev => ({
-          ...prev,
-          [fileIndex]: {
-            fileName,
-            status: 'error',
-            message: `Connection error: ${error.message}`,
-            progress: 0
-          }
-        }));
-        
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
     }
     
     setProcessingStatus(prev => ({
-      ...prev,
-      [fileIndex]: {
-        fileName,
-        status: 'error',
-        message: 'Processing timeout',
-        progress: 0
-      }
+        ...prev,
+        [fileIndex]: {
+            fileName,
+            status: 'error',
+            message: 'Processing timeout',
+            progress: 0
+        }
     }));
     
     return { success: false, error: 'Timeout' };
-  };
+};
+
+  // const pollDocumentStatus = async (documentId, fileName, fileIndex, totalFiles) => {
+  //   let attempts = 0;
+  //   const maxAttempts = 120;
+    
+  //   // Initialize status for this file
+  //   setProcessingStatus(prev => ({
+  //     ...prev,
+  //     [fileIndex]: {
+  //       fileName,
+  //       status: 'uploading',
+  //       message: 'Uploading to server...',
+  //       progress: 10
+  //     }
+  //   }));
+    
+  //   while (attempts < maxAttempts) {
+  //     try {
+  //       attempts++;
+        
+  //       if (!documentId) {
+  //         await new Promise(resolve => setTimeout(resolve, 3000));
+  //         continue;
+  //       }
+        
+  //       const response = await fetch(
+  //         `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/documents/${documentId}/status`
+  //       );
+        
+  //       if (response.ok) {
+  //         const statusData = await response.json();
+          
+  //         let progress = 10;
+  //         let message = 'Uploading...';
+  //         let status = 'uploading';
+          
+  //         if (statusData.status === "processing") {
+  //           progress = 30 + Math.min(50, (attempts * 0.5));
+  //           message = `Processing chunks with AI... (Attempt ${attempts})`;
+  //           status = 'processing';
+            
+  //           if (attempts % 5 === 0) {
+  //             const chunkProgress = Math.min(8, Math.floor(attempts / 5));
+  //             message = `Processing chunk ${chunkProgress}/8 with AI...`;
+  //           }
+  //         } else if (statusData.status === "completed") {
+  //           progress = 100;
+  //           message = 'Processing complete!';
+  //           status = 'completed';
+            
+  //           setProcessingStatus(prev => ({
+  //             ...prev,
+  //             [fileIndex]: {
+  //               fileName,
+  //               status: 'completed',
+  //               message: 'Amendment processed successfully',
+  //               progress: 100
+  //             }
+  //           }));
+            
+  //           setCompletedFiles(prev => [...prev, { 
+  //             fileName, 
+  //             documentId, 
+  //             contractId: statusData.contract_id 
+  //           }]);
+            
+  //           const newProgress = ((fileIndex + 1) / totalFiles) * 100;
+  //           setOverallProgress(newProgress);
+            
+  //           return { success: true, documentId, contractId: statusData.contract_id };
+  //         } else if (statusData.status.includes("failed")) {
+  //           setProcessingStatus(prev => ({
+  //             ...prev,
+  //             [fileIndex]: {
+  //               fileName,
+  //               status: 'error',
+  //               message: `Processing failed: ${statusData.status}`,
+  //               progress: 0
+  //             }
+  //           }));
+  //           return { success: false, error: statusData.status };
+  //         }
+          
+  //         setProcessingStatus(prev => ({
+  //           ...prev,
+  //           [fileIndex]: {
+  //             fileName,
+  //             status,
+  //             message,
+  //             progress
+  //           }
+  //         }));
+          
+  //         const fileProgress = (fileIndex / totalFiles) * 100;
+  //         const currentFileProgress = (progress / 100) * (100 / totalFiles);
+  //         setOverallProgress(fileProgress + currentFileProgress);
+  //       }
+        
+  //       await new Promise(resolve => setTimeout(resolve, 3000));
+        
+  //     } catch (error) {
+  //       console.log(`Polling attempt ${attempts} failed:`, error.message);
+        
+  //       setProcessingStatus(prev => ({
+  //         ...prev,
+  //         [fileIndex]: {
+  //           fileName,
+  //           status: 'error',
+  //           message: `Connection error: ${error.message}`,
+  //           progress: 0
+  //         }
+  //       }));
+        
+  //       await new Promise(resolve => setTimeout(resolve, 5000));
+  //     }
+  //   }
+    
+  //   setProcessingStatus(prev => ({
+  //     ...prev,
+  //     [fileIndex]: {
+  //       fileName,
+  //       status: 'error',
+  //       message: 'Processing timeout',
+  //       progress: 0
+  //     }
+  //   }));
+    
+  //   return { success: false, error: 'Timeout' };
+  // };
 
   const handleUpload = async () => {
     if (!selectedFiles.length || !parentContract) return;

@@ -1,4 +1,3 @@
-
 import openai
 import os
 from typing import Dict, Any, List, Optional
@@ -188,107 +187,803 @@ class ContractProcessor:
         text_lower = text.lower()
         return any(keyword in text_lower for keyword in signature_keywords)
     
-    def process_contract(self, file_content: bytes, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Enhanced contract processing with table extraction"""
+
+    def _process_with_openai_enhanced(self, context: str, metadata: Dict = None) -> Dict[str, Any]:
+        """Process with OpenAI - simplified version"""
         try:
-            print("Starting enhanced contract processing...")
-            
-            # Step 1: Extract text from PDF
-            print("Step 1: Extracting text from PDF...")
-            text_result = self.extract_text_from_pdf(file_content)
-            plain_text = text_result["text"]
-            
-            if len(plain_text.strip()) < 100:
-                print("Warning: Very little text extracted, trying alternative extraction...")
-                # Fallback extraction method
-                plain_text = self._fallback_text_extraction(file_content)
-            
-            # Step 2: Extract tables using Camelot
-            print("Step 2: Extracting tables with Camelot...")
-            tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
-            
-            # Step 3: Structure table data
-            print("Step 3: Structuring table data...")
-            structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
-            
-            # Step 4: Prepare context for OpenAI
-            print("Step 4: Preparing context for OpenAI...")
-            context = self._prepare_llm_context(plain_text, structured_tables, tables_data)
-            
-            # Step 5: Process with OpenAI
-            print("Step 5: Processing with OpenAI...")
-            llm_result = self._process_with_openai_simple(context)
-            
-            # Step 6: Combine results
-            print("Step 6: Combining results...")
-            combined_result = self._combine_extractions(llm_result, structured_tables, tables_data)
-            
-            # Step 7: Calculate metrics
-            print("Step 7: Calculating metrics...")
-            combined_result = self._add_metrics(combined_result, structured_tables)
-            
-            # Add metadata
-            if metadata:
-                combined_result["metadata"] = {
-                    **combined_result.get("metadata", {}),
-                    **metadata,
-                    "processing_steps": ["text_extraction", "table_extraction", "llm_processing"],
-                    "table_count": tables_data.get("total_tables", 0),
-                    "page_count": text_result.get("page_count", 0),
-                    "extraction_complete": True
-                }
-            
-            print("Contract processing completed successfully!")
-            return combined_result
-            
+            # Use the existing simple method
+            return self._process_with_openai_simple(context)
         except Exception as e:
-            print(f"Error in enhanced contract processing: {e}")
-            import traceback
-            traceback.print_exc()
-            return self._get_enhanced_fallback_extraction(file_content)
-    
-    def _prepare_llm_context(self, plain_text: str, structured_tables: Dict, tables_data: Dict) -> str:
-        """Prepare context for LLM processing"""
+            print(f"OpenAI enhanced processing failed: {e}")
+            # Return basic structure
+            return {
+                "contract_type": "Agreement",
+                "parties": [],
+                "dates": {},
+                "financial": {},
+                "confidence_score": 0.5,
+                "extraction_notes": ["Basic extraction due to processing error"]
+            }
+
+
+    def _prepare_llm_context_enhanced(self, plain_text: str, structured_tables: Dict, tables_data: Dict, total_from_tables: float) -> str:
+        """Prepare enhanced context for LLM with table data"""
         # Truncate text if too long
-        max_text_length = 10000
+        max_text_length = 6000
         if len(plain_text) > max_text_length:
             plain_text = plain_text[:max_text_length] + "... [truncated]"
         
-        # Create table summary
-        table_summary = "EXTRACTED TABLES DATA:\n\n"
+        # Create detailed table summary
+        table_summary = "=== IMPORTANT: EXTRACTED TABLE DATA ===\n\n"
         
         if structured_tables.get("payment_schedule"):
-            table_summary += f"PAYMENT SCHEDULE ({len(structured_tables['payment_schedule'])} items):\n"
-            for payment in structured_tables["payment_schedule"][:5]:  # Show first 5
-                table_summary += f"  - {payment.get('description', 'N/A')}: {payment.get('amount', 'N/A')} due {payment.get('due_date', 'N/A')}\n"
+            payments = structured_tables["payment_schedule"]
+            table_summary += f"PAYMENT SCHEDULE ({len(payments)} payments):\n"
+            for i, payment in enumerate(payments[:5]):
+                table_summary += f"  {i+1}. {payment.get('description', 'N/A')}: {payment.get('amount', 'N/A')} due {payment.get('due_date', 'N/A')}\n"
         
         if structured_tables.get("deliverables"):
-            table_summary += f"\nDELIVERABLES ({len(structured_tables['deliverables'])} items):\n"
-            for deliverable in structured_tables["deliverables"][:5]:
-                table_summary += f"  - {deliverable.get('item', 'N/A')}: Due {deliverable.get('due_date', 'N/A')}\n"
+            deliverables = structured_tables["deliverables"]
+            table_summary += f"\nDELIVERABLES ({len(deliverables)} items):\n"
+            for i, deliverable in enumerate(deliverables[:5]):
+                table_summary += f"  {i+1}. {deliverable.get('item', 'N/A')}: Due {deliverable.get('due_date', 'N/A')}\n"
         
-        if structured_tables.get("reporting_requirements"):
-            table_summary += f"\nREPORTING REQUIREMENTS ({len(structured_tables['reporting_requirements'])} items):\n"
-            for report in structured_tables["reporting_requirements"][:5]:
-                table_summary += f"  - {report.get('type', 'N/A')}: {report.get('frequency', 'N/A')}\n"
+        if total_from_tables > 0:
+            table_summary += f"\nTOTAL CALCULATED FROM TABLES: {total_from_tables}\n"
         
         context = f"""
-        CONTRACT TEXT:
-        {plain_text}
-        
+        EXTRACTED TABLE DATA:
         {table_summary}
         
-        ADDITIONAL TABLES FOUND: {tables_data.get('total_tables', 0)} total tables
-        TABLE TYPES: {', '.join(tables_data.get('tables_by_type', {}).keys())}
+        CONTRACT TEXT:
+        {plain_text}
         
         INSTRUCTIONS:
         1. Extract all key information from the contract text above
         2. Use the provided table data to populate structured fields
-        3. Focus on accuracy and completeness
+        3. Focus on financial data, dates, parties, and deliverables
         4. Return only valid JSON
         """
         
         return context
+
+
+
+    def _get_fallback_with_tables(self, file_content: bytes) -> Dict[str, Any]:
+        """Enhanced fallback extraction with table data"""
+        # Try to extract tables
+        try:
+            tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
+            structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
+        except:
+            tables_data = {"total_tables": 0, "tables": []}
+            structured_tables = {}
+        
+        # Calculate total from tables
+        total_from_tables = self._calculate_total_from_tables(structured_tables)
+        
+        return {
+            "contract_type": "Unknown",
+            "contract_subtype": None,
+            "master_agreement_id": None,
+            "parties": [],
+            "dates": {},
+            "financial": {
+                "total_value": total_from_tables if total_from_tables > 0 else None,
+                "currency": "USD"
+            },
+            "payment_schedule": structured_tables.get("payment_schedule", []),
+            "deliverables": structured_tables.get("deliverables", []),
+            "budget": structured_tables.get("budget", []),
+            "reporting_requirements": structured_tables.get("reporting_requirements", []),
+            "signatories": [],
+            "clauses": {},
+            "key_fields": {},
+            "extracted_tables": {
+                "total_tables": tables_data.get("total_tables", 0),
+                "tables_by_type": tables_data.get("tables_by_type", {}),
+                "extraction_method": "fallback"
+            },
+            "confidence_score": 0.3,
+            "risk_score": 0.5,
+            "metadata": {
+                "extraction_method": "fallback",
+                "has_tables": tables_data.get("total_tables", 0) > 0
+            }
+        }
+
+    def _process_camelot_tables(self, tables) -> List[Dict[str, Any]]:
+        """Process Camelot tables into structured format with NaN cleaning"""
+        processed_tables = []
+        
+        for i, table in enumerate(tables):
+            try:
+                df = table.df
+                
+                # Clean the DataFrame - replace NaN with None
+                df = df.replace({float('nan'): None, 'nan': None, 'NaN': None, 'NAN': None})
+                df = df.dropna(how='all').dropna(axis=1, how='all')
+                df = df.reset_index(drop=True)
+                
+                if df.empty:
+                    continue
+                
+                # Convert to dict and clean NaN values
+                data_records = []
+                for record in df.to_dict(orient='records'):
+                    cleaned_record = {}
+                    for key, value in record.items():
+                        if isinstance(value, float):
+                            import math
+                            if math.isnan(value):
+                                cleaned_record[key] = None
+                            else:
+                                cleaned_record[key] = value
+                        else:
+                            cleaned_record[key] = value
+                    data_records.append(cleaned_record)
+                
+                table_data = {
+                    "id": f"table_{i+1}",
+                    "page": int(table.page) if hasattr(table, 'page') else 1,
+                    "accuracy": float(table.accuracy) if hasattr(table, 'accuracy') else 0.0,
+                    "type": "camelot",
+                    "rows": len(df),
+                    "columns": len(df.columns),
+                    "data": data_records,  # Use cleaned records
+                    "headers": df.iloc[0].tolist() if len(df) > 0 else [],
+                    "raw_data": df.to_dict(orient='split')
+                }
+                
+                processed_tables.append(table_data)
+                print(f"  - Table {i+1}: {len(df)} rows, {len(df.columns)} cols")
+                
+            except Exception as e:
+                print(f"Error processing table {i+1}: {e}")
+                continue
+        
+        return processed_tables
+
+    # def process_contract(self, file_content: bytes, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    #     """Enhanced contract processing with improved table extraction"""
+    #     try:
+    #         print("Starting enhanced contract processing with improved table extraction...")
+            
+    #         # Step 1: Extract text from PDF
+    #         print("Step 1: Extracting text from PDF...")
+    #         text_result = self.extract_text_from_pdf(file_content)
+    #         plain_text = text_result["text"]
+            
+    #         if len(plain_text.strip()) < 100:
+    #             print("Warning: Very little text extracted, trying PDFPlumber...")
+    #             plain_text = self._extract_text_with_pdfplumber(file_content)
+            
+    #         # Step 2: Extract tables using enhanced extractor
+    #         print("Step 2: Enhanced table extraction...")
+    #         tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
+            
+    #         # Step 3: Structure table data
+    #         print("Step 3: Structuring table data...")
+    #         structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
+            
+    #         # Step 4: Calculate total from tables if not in text
+    #         total_from_tables = self._calculate_total_from_tables(structured_tables)
+    #         print(f"Total calculated from tables: {total_from_tables}")
+            
+    #         # Step 5: Prepare context for OpenAI with detailed table info
+    #         print("Step 5: Preparing enhanced context for OpenAI...")
+    #         context = self._prepare_llm_context_enhanced(plain_text, structured_tables, tables_data, total_from_tables)
+            
+    #         # Step 6: Process with OpenAI
+    #         print("Step 6: Processing with OpenAI...")
+    #         llm_result = self._process_with_openai_enhanced(context, metadata)
+            
+    #         # Step 7: Enhance result with table data
+    #         print("Step 7: Enhancing result with table data...")
+    #         combined_result = self._enhance_extraction_with_tables(llm_result, structured_tables, tables_data, metadata)
+            
+    #         # Step 8: Calculate metrics
+    #         print("Step 8: Calculating metrics...")
+    #         combined_result = self._add_metrics_with_tables(combined_result, structured_tables, tables_data)
+            
+    #         # Check if amendment
+    #         is_amendment = metadata and metadata.get('is_amendment', False)
+    #         if is_amendment:
+    #             combined_result = self._add_amendment_info(combined_result, metadata)
+            
+    #         print(f"Contract processing completed! Confidence: {combined_result.get('confidence_score', 0.0)}")
+    #         return combined_result
+            
+    #     except Exception as e:
+    #         print(f"Error in contract processing: {e}")
+    #         import traceback
+    #         traceback.print_exc()
+    #         return self._get_fallback_with_tables(file_content)
+
+    def _extract_text_with_pdfplumber(self, file_content: bytes) -> str:
+        """Extract text using PDFPlumber"""
+        import io
+        import pdfplumber
+        
+        text = ""
+        with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        
+        return text
+
+    def _calculate_total_from_tables(self, structured_tables: Dict) -> float:
+        """Calculate total contract value from tables"""
+        total = 0.0
+        
+        # Sum payment schedule amounts
+        for payment in structured_tables.get("payment_schedule", []):
+            amount_str = str(payment.get("amount", "0"))
+            try:
+                # Clean the amount string
+                amount_clean = ''.join(c for c in amount_str if c.isdigit() or c == '.' or c == ',')
+                if amount_clean:
+                    amount = float(amount_clean.replace(',', ''))
+                    total += amount
+            except:
+                pass
+        
+        # Sum budget items
+        for budget_item in structured_tables.get("budget", []):
+            amount_str = str(budget_item.get("amount", "0"))
+            try:
+                amount_clean = ''.join(c for c in amount_str if c.isdigit() or c == '.' or c == ',')
+                if amount_clean:
+                    amount = float(amount_clean.replace(',', ''))
+                    total += amount
+            except:
+                pass
+        
+        return total
+
+    def _add_metrics_with_tables(self, extraction: Dict, structured_tables: Dict, tables_data: Dict) -> Dict[str, Any]:
+        """Add extraction metrics with table consideration"""
+        # Use existing method
+        extraction = self._add_metrics(extraction, structured_tables)
+        
+        # Boost confidence if tables were found
+        if tables_data.get("total_tables", 0) > 0:
+            current_confidence = extraction.get("confidence_score", 0.5)
+            extraction["confidence_score"] = min(current_confidence * 1.2, 0.95)
+            extraction["extraction_notes"] = extraction.get("extraction_notes", []) + [
+                f"Tables extracted: {tables_data.get('total_tables', 0)}"
+            ]
+        
+        return extraction
+
+    def _add_amendment_info(self, extraction: Dict, metadata: Dict) -> Dict:
+        """Add amendment information to extraction"""
+        if metadata.get('is_amendment'):
+            extraction["amendment_info"] = {
+                "is_amendment": True,
+                "amendment_type": metadata.get("amendment_type", "modification"),
+                "parent_document_id": metadata.get("parent_document_id"),
+                "processed_at": datetime.now().isoformat()
+            }
+        
+        return extraction
+
+    def _clean_extraction_for_db(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean extraction data for database storage (remove NaN values)"""
+        import math
+        import copy
+        
+        def clean_value(value):
+            if isinstance(value, float):
+                if math.isnan(value):
+                    return None
+                elif math.isinf(value):
+                    return None
+                return value
+            elif isinstance(value, dict):
+                cleaned = {}
+                for k, v in value.items():
+                    cleaned[k] = clean_value(v)
+                return cleaned
+            elif isinstance(value, list):
+                return [clean_value(item) for item in value]
+            elif value is None:
+                return None
+            else:
+                return value
+        
+        # Create a deep copy to avoid modifying original
+        cleaned_extraction = copy.deepcopy(extraction)
+        return clean_value(cleaned_extraction)
+
+
+
+    def _enhance_extraction_with_tables(self, llm_result: Dict, structured_tables: Dict, tables_data: Dict, metadata: Dict = None) -> Dict:
+        """Enhance extraction with table data"""
+        enhanced = llm_result.copy() if llm_result else {}
+        
+        # Ensure financial section exists
+        if "financial" not in enhanced:
+            enhanced["financial"] = {}
+        
+        # Add table data
+        enhanced["extracted_tables"] = {
+            "total_tables": tables_data.get("total_tables", 0),
+            "tables_by_type": tables_data.get("tables_by_type", {}),
+            "structured_data": structured_tables,
+            "extraction_methods": tables_data.get("extraction_methods", []),
+            "extraction_success": tables_data.get("extraction_success", False)
+        }
+        
+        # Update total value if not already set or if tables provide better data
+        total_from_tables = self._calculate_total_from_tables(structured_tables)
+        if total_from_tables > 0:
+            current_total = enhanced.get("financial", {}).get("total_value", 0)
+            if not current_total or total_from_tables > current_total:
+                enhanced["financial"]["total_value"] = total_from_tables
+                enhanced["financial"]["_source"] = "calculated_from_tables"
+        
+        # Add payment schedule if not already present
+        if structured_tables.get("payment_schedule") and "payment_schedule" not in enhanced:
+            enhanced["payment_schedule"] = structured_tables["payment_schedule"]
+        
+        # Add deliverables if not already present
+        if structured_tables.get("deliverables") and "deliverables" not in enhanced:
+            enhanced["deliverables"] = structured_tables["deliverables"]
+        
+        # Add amendment info
+        if metadata and metadata.get("is_amendment"):
+            enhanced["amendment_info"] = {
+                "is_amendment": True,
+                "amendment_type": metadata.get("amendment_type", "modification"),
+                "parent_document_id": metadata.get("parent_document_id"),
+                "table_updates": len(structured_tables.get("payment_schedule", [])) > 0 or len(structured_tables.get("deliverables", [])) > 0
+            }
+        
+        return enhanced
+
+    # def process_contract(self, file_content: bytes, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    #     """Enhanced contract processing with table extraction"""
+    #     try:
+    #         print("Starting enhanced contract processing...")
+            
+    #         # Step 1: Extract text from PDF
+    #         print("Step 1: Extracting text from PDF...")
+    #         text_result = self.extract_text_from_pdf(file_content)
+    #         plain_text = text_result["text"]
+            
+    #         if len(plain_text.strip()) < 100:
+    #             print("Warning: Very little text extracted, trying alternative extraction...")
+    #             # Fallback extraction method
+    #             plain_text = self._fallback_text_extraction(file_content)
+            
+    #         # Step 2: Extract tables using Camelot
+    #         print("Step 2: Extracting tables with Camelot...")
+    #         tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
+            
+    #         # Step 3: Structure table data
+    #         print("Step 3: Structuring table data...")
+    #         structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
+            
+    #         # Step 4: Prepare context for OpenAI
+    #         print("Step 4: Preparing context for OpenAI...")
+    #         context = self._prepare_llm_context(plain_text, structured_tables, tables_data)
+            
+    #         # Step 5: Process with OpenAI
+    #         print("Step 5: Processing with OpenAI...")
+    #         llm_result = self._process_with_openai_simple(context)
+            
+    #         # Step 6: Combine results
+    #         print("Step 6: Combining results...")
+    #         combined_result = self._combine_extractions(llm_result, structured_tables, tables_data)
+            
+    #         # Step 7: Calculate metrics
+    #         print("Step 7: Calculating metrics...")
+    #         combined_result = self._add_metrics(combined_result, structured_tables)
+            
+    #         # FIXED: Check if this is an amendment - moved before metadata check
+    #         is_amendment = metadata and metadata.get('is_amendment', False)
+    #         parent_doc_id = metadata.get('parent_document_id') if metadata else None
+            
+    #         # NEW: If this is an amendment, auto-apply if needed
+    #         if is_amendment and parent_doc_id:
+    #             print(f"Processing as amendment for parent document: {parent_doc_id}")
+    #             combined_result = self._apply_amendment_updates(combined_result, parent_doc_id, metadata)
+            
+    #         # Add metadata
+    #         if metadata:
+    #             combined_result["metadata"] = {
+    #                 **combined_result.get("metadata", {}),
+    #                 **metadata,
+    #                 "processing_steps": ["text_extraction", "table_extraction", "llm_processing"],
+    #                 "table_count": tables_data.get("total_tables", 0),
+    #                 "page_count": text_result.get("page_count", 0),
+    #                 "extraction_complete": True
+    #             }
+            
+    #         print("Contract processing completed successfully!")
+    #         return combined_result
+            
+    #     except Exception as e:
+    #         print(f"Error in enhanced contract processing: {e}")
+    #         import traceback
+    #         traceback.print_exc()
+    #         return self._get_enhanced_fallback_extraction(file_content)
+
+    def _apply_amendment_updates(self, extraction: Dict[str, Any], parent_doc_id: int, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply amendment updates to extraction results"""
+        try:
+            print(f"Applying amendment updates for parent document: {parent_doc_id}")
+            
+            # Get amendment type
+            amendment_type = metadata.get('amendment_type', 'modification')
+            
+            # Create a basic updated extraction with amendment info
+            updated_extraction = extraction.copy()
+            
+            # Add amendment tracking info
+            updated_extraction['amendment_info'] = {
+                'parent_document_id': parent_doc_id,
+                'amendment_type': amendment_type,
+                'auto_applied': True,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Calculate updated values based on amendment type
+            if amendment_type == 'addendum' and updated_extraction.get('financial', {}).get('total_value'):
+                # For addendums, note that value should be added
+                updated_extraction['financial']['_amendment_note'] = f"Value to be added to parent contract"
+                print(f"Addendum detected: {updated_extraction['financial'].get('total_value')} to be added")
+            
+            elif amendment_type == 'modification' and updated_extraction.get('financial', {}).get('total_value'):
+                # For modifications, note that value should replace
+                updated_extraction['financial']['_amendment_note'] = f"Value to replace parent contract value"
+                print(f"Modification detected: {updated_extraction['financial'].get('total_value')} to replace existing")
+            
+            # Add amendment summary
+            updated_extraction['extraction_notes'] = updated_extraction.get('extraction_notes', []) + [
+                f"Amendment processed ({amendment_type})",
+                f"Parent document ID: {parent_doc_id}"
+            ]
+            
+            return updated_extraction
+            
+        except Exception as e:
+            print(f"Error in amendment updates: {e}")
+            # Return original extraction if amendment update fails
+            return extraction
+
+
+    # def process_contract(self, file_content: bytes, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    #     """Enhanced contract processing with table extraction"""
+    #     try:
+    #         print("Starting enhanced contract processing...")
+            
+    #         # Step 1: Extract text from PDF
+    #         print("Step 1: Extracting text from PDF...")
+    #         text_result = self.extract_text_from_pdf(file_content)
+    #         plain_text = text_result["text"]
+            
+    #         if len(plain_text.strip()) < 100:
+    #             print("Warning: Very little text extracted, trying alternative extraction...")
+    #             # Fallback extraction method
+    #             plain_text = self._fallback_text_extraction(file_content)
+            
+    #         # Step 2: Extract tables using Camelot
+    #         print("Step 2: Extracting tables with Camelot...")
+    #         tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
+            
+    #         # Step 3: Structure table data
+    #         print("Step 3: Structuring table data...")
+    #         structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
+            
+    #         # Step 4: Prepare context for OpenAI
+    #         print("Step 4: Preparing context for OpenAI...")
+    #         context = self._prepare_llm_context(plain_text, structured_tables, tables_data)
+            
+    #         # Step 5: Process with OpenAI
+    #         print("Step 5: Processing with OpenAI...")
+    #         llm_result = self._process_with_openai_simple(context)
+            
+    #         # Step 6: Combine results
+    #         print("Step 6: Combining results...")
+    #         combined_result = self._combine_extractions(llm_result, structured_tables, tables_data)
+            
+    #         # Step 7: Calculate metrics
+    #         print("Step 7: Calculating metrics...")
+    #         combined_result = self._add_metrics(combined_result, structured_tables)
+
+    #         if metadata and metadata.get('is_amendment'):
+    #             print("Processing as amendment - checking for auto-application...")
+    #             parent_doc_id = metadata.get('parent_document_id')
+            
+    #         if parent_doc_id:
+    #             # Get parent contract details
+    #             from app.database import SessionLocal
+    #             from app import models
+                
+    #             db = SessionLocal()
+    #             try:
+    #                 # Find parent document and contract
+    #                 parent_doc = db.query(models.Document).filter(
+    #                     models.Document.id == parent_doc_id
+    #                 ).first()
+                    
+    #                 if parent_doc:
+    #                     parent_contract = db.query(models.Contract).filter(
+    #                         models.Contract.document_id == parent_doc.id
+    #                     ).order_by(models.Contract.version.desc()).first()
+                        
+    #                     if parent_contract:
+    #                         # Create a mock amendment contract for comparison
+    #                         amendment_contract = models.Contract()
+    #                         # Populate with extracted data
+    #                         amendment_contract.total_value = combined_result.get('financial', {}).get('total_value')
+    #                         amendment_contract.currency = combined_result.get('financial', {}).get('currency')
+    #                         amendment_contract.parties = combined_result.get('parties', [])
+    #                         amendment_contract.clauses = combined_result.get('clauses', {})
+    #                         amendment_contract.key_fields = combined_result.get('key_fields', {})
+                            
+    #                         # Apply amendment logic
+    #                         amendment_type = metadata.get('amendment_type', 'modification')
+    #                         combined_result = self._apply_amendment_to_extraction(
+    #                             parent_contract, 
+    #                             combined_result, 
+    #                             amendment_type
+    #                         )
+                            
+    #                         # Add amendment tracking info
+    #                         combined_result['amendment_info'] = {
+    #                             'parent_contract_id': parent_contract.id,
+    #                             'amendment_type': amendment_type,
+    #                             'auto_applied': True,
+    #                             'parent_version': parent_contract.version
+    #                         }
+    #             finally:
+    #                 db.close()
+
+    #         # Add metadata
+    #         if metadata:
+    #             combined_result["metadata"] = {
+    #                 **combined_result.get("metadata", {}),
+    #                 **metadata,
+    #                 "processing_steps": ["text_extraction", "table_extraction", "llm_processing"],
+    #                 "table_count": tables_data.get("total_tables", 0),
+    #                 "page_count": text_result.get("page_count", 0),
+    #                 "extraction_complete": True
+    #             }
+            
+    #         print("Contract processing completed successfully!")
+    #         return combined_result
+            
+    #     except Exception as e:
+    #         print(f"Error in enhanced contract processing: {e}")
+    #         import traceback
+    #         traceback.print_exc()
+    #         return self._get_enhanced_fallback_extraction(file_content)
+    
+
+    # def _apply_amendment_to_extraction(self, parent_contract: Any, amendment_extraction: Dict, amendment_type: str) -> Dict:
+    #     """
+    #     Apply amendment changes to extraction results
+    #     """
+    #     updated_extraction = amendment_extraction.copy()
+        
+    #     # Track what was updated
+    #     changes = []
+        
+    #     # Update financial values based on amendment type
+    #     if amendment_extraction.get('financial', {}).get('total_value') is not None:
+    #         amendment_value = amendment_extraction['financial']['total_value']
+    #         parent_value = getattr(parent_contract, 'total_value', None)
+            
+    #         if amendment_type in ['modification', 'correction']:
+    #             # Direct replacement
+    #             updated_extraction['financial']['total_value'] = amendment_value
+    #             if parent_value is not None:
+    #                 changes.append(f"Total value updated from {parent_value} to {amendment_value}")
+            
+    #         elif amendment_type == 'addendum':
+    #             # Addition to existing value
+    #             new_value = (parent_value or 0) + (amendment_value or 0)
+    #             updated_extraction['financial']['total_value'] = new_value
+    #             changes.append(f"Total value increased by {amendment_value} to {new_value}")
+            
+    #         elif amendment_type in ['extension', 'renewal']:
+    #             # For extensions/renewals, keep the value unless specified otherwise
+    #             if amendment_value != parent_value:
+    #                 updated_extraction['financial']['total_value'] = amendment_value
+    #                 changes.append(f"Total value updated to {amendment_value}")
+        
+    #     # Update dates for extensions/renewals
+    #     if amendment_type in ['extension', 'renewal']:
+    #         if amendment_extraction.get('dates', {}).get('expiration_date'):
+    #             updated_extraction['dates']['expiration_date'] = amendment_extraction['dates']['expiration_date']
+    #             changes.append(f"Expiration date extended to {amendment_extraction['dates']['expiration_date']}")
+        
+    #     # Update parties for addendums
+    #     if amendment_type == 'addendum' and amendment_extraction.get('parties'):
+    #         parent_parties = getattr(parent_contract, 'parties', []) or []
+    #         amendment_parties = amendment_extraction.get('parties', [])
+            
+    #         # Combine parties (unique)
+    #         combined_parties = list(set(parent_parties + amendment_parties))
+    #         if len(combined_parties) > len(parent_parties):
+    #             updated_extraction['parties'] = combined_parties
+    #             changes.append(f"Added new parties: {list(set(amendment_parties) - set(parent_parties))}")
+        
+    #     # Update clauses
+    #     if amendment_extraction.get('clauses'):
+    #         parent_clauses = getattr(parent_contract, 'clauses', {}) or {}
+    #         amendment_clauses = amendment_extraction.get('clauses', {})
+            
+    #         if amendment_type == 'addendum':
+    #             # Add new clauses
+    #             updated_clauses = {**parent_clauses, **amendment_clauses}
+    #             updated_extraction['clauses'] = updated_clauses
+    #             new_clauses = set(amendment_clauses.keys()) - set(parent_clauses.keys())
+    #             if new_clauses:
+    #                 changes.append(f"Added new clauses: {list(new_clauses)}")
+    #         else:
+    #             # Update existing clauses
+    #             updated_clauses = parent_clauses.copy()
+    #             for clause_name, clause_value in amendment_clauses.items():
+    #                 if clause_name in parent_clauses and parent_clauses[clause_name] != clause_value:
+    #                     changes.append(f"Updated clause '{clause_name}'")
+    #                 updated_clauses[clause_name] = clause_value
+    #             updated_extraction['clauses'] = updated_clauses
+        
+    #     # Add change tracking
+    #     if changes:
+    #         updated_extraction['change_summary'] = f"Amendment ({amendment_type}): " + "; ".join(changes)
+    #         updated_extraction['amendment_changes'] = changes
+        
+    #     return updated_extraction    
+
+    def _prepare_llm_context(self, plain_text: str, structured_tables: Dict, tables_data: Dict) -> str:
+        """Prepare context for LLM processing with detailed table info"""
+        # Truncate text if too long
+        max_text_length = 8000
+        if len(plain_text) > max_text_length:
+            plain_text = plain_text[:max_text_length] + "... [truncated]"
+        
+        # Create detailed table summary
+        table_summary = "=== IMPORTANT: EXTRACTED TABLE DATA ===\n\n"
+        
+        # Payment schedules
+        if structured_tables.get("payment_schedule"):
+            payments = structured_tables["payment_schedule"]
+            table_summary += f"PAYMENT SCHEDULE ({len(payments)} payments):\n"
+            for i, payment in enumerate(payments[:10]):  # Show first 10
+                table_summary += f"{i+1}. {payment.get('description', 'N/A')}: {payment.get('amount', 'N/A')} due {payment.get('due_date', 'N/A')}\n"
+            if len(payments) > 10:
+                table_summary += f"... and {len(payments) - 10} more payments\n"
+            table_summary += "\n"
+        
+        # Deliverables
+        if structured_tables.get("deliverables"):
+            deliverables = structured_tables["deliverables"]
+            table_summary += f"DELIVERABLES ({len(deliverables)} items):\n"
+            for i, deliverable in enumerate(deliverables[:10]):
+                table_summary += f"{i+1}. {deliverable.get('item', 'N/A')}: Due {deliverable.get('due_date', 'N/A')} - Status: {deliverable.get('status', 'N/A')}\n"
+            if len(deliverables) > 10:
+                table_summary += f"... and {len(deliverables) - 10} more deliverables\n"
+            table_summary += "\n"
+        
+        # Budget
+        if structured_tables.get("budget"):
+            budget_items = structured_tables["budget"]
+            table_summary += f"BUDGET ITEMS ({len(budget_items)} items):\n"
+            total_budget = 0
+            for i, item in enumerate(budget_items[:10]):
+                amount_str = str(item.get('amount', '0'))
+                # Try to extract numeric value
+                try:
+                    # Remove non-numeric characters except decimal point
+                    amount_clean = ''.join(c for c in amount_str if c.isdigit() or c == '.' or c == ',')
+                    if amount_clean:
+                        amount = float(amount_clean.replace(',', ''))
+                        total_budget += amount
+                except:
+                    pass
+                table_summary += f"{i+1}. {item.get('category', 'N/A')}: {amount_str}\n"
+            table_summary += f"TOTAL BUDGET (estimated): {total_budget}\n\n"
+        
+        # Add raw table info
+        table_summary += f"TABLE EXTRACTION SUMMARY:\n"
+        table_summary += f"- Total tables found: {tables_data.get('total_tables', 0)}\n"
+        table_summary += f"- Extraction methods: {', '.join(tables_data.get('extraction_methods', []))}\n"
+        
+        # Add specific table types found
+        table_types = tables_data.get('tables_by_type', {})
+        if table_types:
+            table_summary += "- Table types found:\n"
+            for ttype, count in table_types.items():
+                table_summary += f"  * {ttype}: {count} table(s)\n"
+        
+        system_prompt = """You are an expert contract analyst. Extract ALL contract information including financial data, dates, parties, and especially TABLE DATA.
+
+    CRITICAL INSTRUCTIONS:
+    1. PAY SPECIAL ATTENTION TO TABLE DATA provided below - it contains key contractual terms
+    2. Extract ALL payment amounts, dates, and terms from tables
+    3. Calculate TOTAL CONTRACT VALUE from payment schedules if not explicitly stated
+    4. Extract ALL deliverables and their due dates
+    5. For amendments: Note what values are being changed/added
+
+    TABLE DATA PROVIDED:
+    {table_data}
+
+    CONTRACT TEXT:
+    {contract_text}
+
+    Return COMPLETE JSON with these fields:
+    1. contract_type, contract_subtype
+    2. parties (list ALL parties with full names)
+    3. dates (effective_date, expiration_date, execution_date, termination_date)
+    4. financial (total_value, currency, payment_terms) - CALCULATE total from tables if needed
+    5. payment_schedule (list of payments from tables)
+    6. deliverables (list from tables)
+    7. key_fields (important terms found)
+    8. extraction_notes (what was extracted, any issues)
+    9. confidence_score (0.0-1.0 based on completeness)
+
+    IMPORTANT: If this is an amendment, include amendment_info field with:
+    - amendment_type
+    - changes_made (list of changes)
+    - parent_contract_reference (if known)"""
+
+        context = system_prompt.format(
+            table_data=table_summary,
+            contract_text=plain_text[:6000]  # Limit text size
+        )
+        
+        return context
+
+
+    # def _prepare_llm_context(self, plain_text: str, structured_tables: Dict, tables_data: Dict) -> str:
+    #     """Prepare context for LLM processing"""
+    #     # Truncate text if too long
+    #     max_text_length = 10000
+    #     if len(plain_text) > max_text_length:
+    #         plain_text = plain_text[:max_text_length] + "... [truncated]"
+        
+    #     # Create table summary
+    #     table_summary = "EXTRACTED TABLES DATA:\n\n"
+        
+    #     if structured_tables.get("payment_schedule"):
+    #         table_summary += f"PAYMENT SCHEDULE ({len(structured_tables['payment_schedule'])} items):\n"
+    #         for payment in structured_tables["payment_schedule"][:5]:  # Show first 5
+    #             table_summary += f"  - {payment.get('description', 'N/A')}: {payment.get('amount', 'N/A')} due {payment.get('due_date', 'N/A')}\n"
+        
+    #     if structured_tables.get("deliverables"):
+    #         table_summary += f"\nDELIVERABLES ({len(structured_tables['deliverables'])} items):\n"
+    #         for deliverable in structured_tables["deliverables"][:5]:
+    #             table_summary += f"  - {deliverable.get('item', 'N/A')}: Due {deliverable.get('due_date', 'N/A')}\n"
+        
+    #     if structured_tables.get("reporting_requirements"):
+    #         table_summary += f"\nREPORTING REQUIREMENTS ({len(structured_tables['reporting_requirements'])} items):\n"
+    #         for report in structured_tables["reporting_requirements"][:5]:
+    #             table_summary += f"  - {report.get('type', 'N/A')}: {report.get('frequency', 'N/A')}\n"
+        
+    #     context = f"""
+    #     CONTRACT TEXT:
+    #     {plain_text}
+        
+    #     {table_summary}
+        
+    #     ADDITIONAL TABLES FOUND: {tables_data.get('total_tables', 0)} total tables
+    #     TABLE TYPES: {', '.join(tables_data.get('tables_by_type', {}).keys())}
+        
+    #     INSTRUCTIONS:
+    #     1. Extract all key information from the contract text above
+    #     2. Use the provided table data to populate structured fields
+    #     3. Focus on accuracy and completeness
+    #     4. Return only valid JSON
+    #     """
+        
+    #     return context
 
     def _process_with_openai_simple(self, context: str) -> Dict[str, Any]:
         """Process context with OpenAI - SIMPLIFIED VERSION (No Proxy)"""
@@ -1311,153 +2006,266 @@ class ContractProcessor:
         
         return tables
 
-    def process_contract_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Process contract text with enhanced table extraction and chunking for large documents"""
+    def process_contract(self, file_content: bytes, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Main contract processing method - wraps process_contract_text"""
         try:
-            # Extract tables before sending to OpenAI
-            extracted_tables = self.extract_tables_from_text(text)
+            print("Starting contract processing...")
             
-            # Calculate approximate token count (rough estimate: 1 token ≈ 4 characters)
-            approx_tokens = len(text) / 4
+            # Extract text from PDF
+            print("Step 1: Extracting text from PDF...")
+            text_result = self.extract_text_from_pdf(file_content)
+            plain_text = text_result["text"]
             
-            # If text is too large, split into chunks
-            if approx_tokens > 2000:  # Conservative threshold for GPT-4
-                print(f"Document too large ({approx_tokens:.0f} estimated tokens), processing in chunks")
-                
-                # Split text into chunks of ~2000 tokens each (8000 characters)
-                chunk_size = 6000
-                chunks = []
-                start = 0
-                
-                while start < len(text):
-                    end = start + chunk_size
-                    # Try to break at a paragraph or sentence boundary
-                    if end < len(text):
-                        # Look for paragraph break first
-                        paragraph_break = text.rfind('\n\n', start, end)
-                        if paragraph_break != -1 and paragraph_break > start:
-                            end = paragraph_break
-                        else:
-                            # Look for sentence break
-                            sentence_break = max(text.rfind('. ', start, end),
-                                                text.rfind('? ', start, end),
-                                                text.rfind('! ', start, end))
-                            if sentence_break != -1 and sentence_break > start:
-                                end = sentence_break + 1
-                    
-                    chunk = text[start:end].strip()
-                    if chunk:
-                        chunks.append(chunk)
-                    start = end
-                
-                print(f"Split document into {len(chunks)} chunks")
-                
-                # Process each chunk and combine results
-                all_extracted_data = []
-                for i, chunk in enumerate(chunks):
-                    print(f"Processing chunk {i+1}/{len(chunks)}")
-                    
-                    chunk_prompt = f"""Analyze this portion of a contract document (chunk {i+1} of {len(chunks)}).
-                    Focus on extracting contractual elements from this specific section.
-                    
-                    Important tables found in full document: {list(extracted_tables.keys())}
-                    
-                    Document text: {chunk[:6000]}"""
-                    
-                    try:
-                        # Simple OpenAI client
-                        api_key = os.getenv("OPENAI_API_KEY")
-                        if api_key:
-                            client = OpenAI(api_key=api_key)
-                            response = client.chat.completions.create(
-                                model="gpt-4o-mini",
-                                messages=[
-                                    {"role": "system", "content": self.system_prompt},
-                                    {"role": "user", "content": chunk_prompt}
-                                ],
-                                temperature=0.1,
-                                max_tokens=1500,
-                                response_format={"type": "json_object"}
-                            )
-                            
-                            extracted = json.loads(response.choices[0].message.content)
-                            all_extracted_data.append(extracted)
-                        else:
-                            print("No OpenAI API key found for chunk processing")
-                            
-                    except Exception as e:
-                        print(f"Error processing chunk {i+1}: {str(e)}")
-                        continue
-                
-                # Combine all extracted data intelligently
-                combined_result = self._merge_chunk_extractions(all_extracted_data)
-                
-                # Add extracted tables to result
-                if extracted_tables:
-                    combined_result["tables_and_schedules"] = extracted_tables
-                
-                # Calculate risk score
-                combined_result["risk_score"] = self._calculate_risk_score(combined_result)
-                
-                # Add metadata
-                if metadata:
-                    combined_result["metadata"] = {
-                        **combined_result.get("metadata", {}),
-                        **metadata,
-                        "processing_method": "chunked",
-                        "number_of_chunks": len(chunks)
-                    }
-                
-                return combined_result
-                
-            else:
-                # Original logic for smaller documents
-                context = f"""
-                Important: This contract contains tables and schedules. Extract ALL information including:
-                
-                Found Tables:
-                {json.dumps(list(extracted_tables.keys()), indent=2)}
-                
-                Contract Text:
-                {text[:12000]}  # Leave room for response
-                """
-                
-                # Simple OpenAI client
-                api_key = os.getenv("OPENAI_API_KEY")
-                if not api_key:
-                    print("No OpenAI API key found")
-                    return self._get_fallback_extraction()
-                
-                client = OpenAI(api_key=api_key)
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": self.system_prompt},
-                        {"role": "user", "content": context}
-                    ],
-                    temperature=0.1,
-                    max_tokens=4000,
-                    response_format={"type": "json_object"}
-                )
-                
-                result = json.loads(response.choices[0].message.content)
-                
-                # Add extracted tables to result
-                if extracted_tables:
-                    result["tables_and_schedules"] = extracted_tables
-                
-                # Calculate risk score
-                result["risk_score"] = self._calculate_risk_score(result)
-                
-                # Add metadata
-                if metadata:
-                    result["metadata"] = {**result.get("metadata", {}), **metadata}
-                
-                return result
-                
+            if len(plain_text.strip()) < 100:
+                print("Warning: Very little text extracted, trying alternative extraction...")
+                plain_text = self._fallback_text_extraction(file_content)
+            
+            print(f"Step 2: Text extraction complete ({len(plain_text)} characters)")
+            
+            # Extract tables using Camelot
+            print("Step 3: Extracting tables...")
+            tables_data = self.table_extractor.extract_tables_from_pdf(file_content)
+            structured_tables = self.table_extractor.extract_structured_table_data(tables_data)
+            
+            # Prepare context for OpenAI
+            print("Step 4: Preparing context for OpenAI...")
+            context = self._prepare_llm_context(plain_text, structured_tables, tables_data)
+            
+            # Process with OpenAI
+            print("Step 5: Processing with OpenAI...")
+            llm_result = self._process_with_openai_simple(context)
+            
+            # Combine results
+            print("Step 6: Combining results...")
+            combined_result = self._combine_extractions(llm_result, structured_tables, tables_data)
+            
+            # Add metrics
+            print("Step 7: Calculating metrics...")
+            combined_result = self._add_metrics(combined_result, structured_tables)
+            
+            # Add metadata
+            if metadata:
+                combined_result["metadata"] = {
+                    **combined_result.get("metadata", {}),
+                    **metadata,
+                    "processing_steps": ["text_extraction", "table_extraction", "llm_processing"],
+                    "table_count": tables_data.get("total_tables", 0),
+                    "page_count": text_result.get("page_count", 0),
+                    "extraction_complete": True
+                }
+            
+            print("Contract processing completed successfully!")
+            return combined_result
+            
         except Exception as e:
-            print(f"Error processing contract: {e}")
-            return self._get_fallback_extraction()
+            print(f"Error in contract processing: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._get_enhanced_fallback_extraction(file_content)
+
+    # def process_contract_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    #     """Process contract text with enhanced table extraction and chunking for large documents"""
+    #     try:
+    #         # Extract tables before sending to OpenAI
+    #         extracted_tables = self.extract_tables_from_text(text)
+            
+    #         # Calculate approximate token count (rough estimate: 1 token ≈ 4 characters)
+    #         approx_tokens = len(text) / 4
+            
+    #         # If text is too large, split into chunks
+    #         if approx_tokens > 2000:  # Conservative threshold for GPT-4
+    #             print(f"Document too large ({approx_tokens:.0f} estimated tokens), processing in chunks")
+                
+    #             # Split text into chunks of ~2000 tokens each (8000 characters)
+    #             chunk_size = 6000
+    #             chunks = []
+    #             start = 0
+                
+    #             while start < len(text):
+    #                 end = start + chunk_size
+    #                 # Try to break at a paragraph or sentence boundary
+    #                 if end < len(text):
+    #                     # Look for paragraph break first
+    #                     paragraph_break = text.rfind('\n\n', start, end)
+    #                     if paragraph_break != -1 and paragraph_break > start:
+    #                         end = paragraph_break
+    #                     else:
+    #                         # Look for sentence break
+    #                         sentence_break = max(text.rfind('. ', start, end),
+    #                                             text.rfind('? ', start, end),
+    #                                             text.rfind('! ', start, end))
+    #                         if sentence_break != -1 and sentence_break > start:
+    #                             end = sentence_break + 1
+                    
+    #                 chunk = text[start:end].strip()
+    #                 if chunk:
+    #                     chunks.append(chunk)
+    #                 start = end
+                
+    #             print(f"Split document into {len(chunks)} chunks")
+                
+    #             # Process each chunk and combine results
+    #             all_extracted_data = []
+    #             for i, chunk in enumerate(chunks):
+    #                 print(f"Processing chunk {i+1}/{len(chunks)}")
+                    
+    #                 chunk_prompt = f"""Analyze this portion of a contract document (chunk {i+1} of {len(chunks)}).
+    #                 Focus on extracting contractual elements from this specific section.
+                    
+    #                 Important tables found in full document: {list(extracted_tables.keys())}
+                    
+    #                 Document text: {chunk[:6000]}"""
+                    
+    #                 try:
+    #                     # Simple OpenAI client
+    #                     api_key = os.getenv("OPENAI_API_KEY")
+    #                     if api_key:
+    #                         client = OpenAI(api_key=api_key)
+    #                         response = client.chat.completions.create(
+    #                             model="gpt-4o-mini",
+    #                             messages=[
+    #                                 {"role": "system", "content": self.system_prompt},
+    #                                 {"role": "user", "content": chunk_prompt}
+    #                             ],
+    #                             temperature=0.1,
+    #                             max_tokens=1500,
+    #                             response_format={"type": "json_object"}
+    #                         )
+                            
+    #                         extracted = json.loads(response.choices[0].message.content)
+    #                         all_extracted_data.append(extracted)
+    #                     else:
+    #                         print("No OpenAI API key found for chunk processing")
+                            
+    #                 except Exception as e:
+    #                     print(f"Error processing chunk {i+1}: {str(e)}")
+    #                     continue
+                
+    #             # Combine all extracted data intelligently
+    #             combined_result = self._merge_chunk_extractions(all_extracted_data)
+                
+    #             # Add extracted tables to result
+    #             if extracted_tables:
+    #                 combined_result["tables_and_schedules"] = extracted_tables
+                
+    #             # Calculate risk score
+    #             combined_result["risk_score"] = self._calculate_risk_score(combined_result)
+                
+    #             # Add metadata
+    #             if metadata:
+    #                 combined_result["metadata"] = {
+    #                     **combined_result.get("metadata", {}),
+    #                     **metadata,
+    #                     "processing_method": "chunked",
+    #                     "number_of_chunks": len(chunks)
+    #                 }
+                
+    #             return combined_result
+                
+    #         else:
+    #             # Original logic for smaller documents
+    #             context = f"""
+    #             Important: This contract contains tables and schedules. Extract ALL information including:
+                
+    #             Found Tables:
+    #             {json.dumps(list(extracted_tables.keys()), indent=2)}
+                
+    #             Contract Text:
+    #             {text[:12000]}  # Leave room for response
+    #             """
+                
+    #             # Simple OpenAI client
+    #             api_key = os.getenv("OPENAI_API_KEY")
+    #             if not api_key:
+    #                 print("No OpenAI API key found")
+    #                 return self._get_fallback_extraction()
+                
+    #             client = OpenAI(api_key=api_key)
+    #             response = client.chat.completions.create(
+    #                 model="gpt-4o-mini",
+    #                 messages=[
+    #                     {"role": "system", "content": self.system_prompt},
+    #                     {"role": "user", "content": context}
+    #                 ],
+    #                 temperature=0.1,
+    #                 max_tokens=4000,
+    #                 response_format={"type": "json_object"}
+    #             )
+                
+    #             result = json.loads(response.choices[0].message.content)
+                
+    #             # Add extracted tables to result
+    #             if extracted_tables:
+    #                 result["tables_and_schedules"] = extracted_tables
+                
+    #             # Calculate risk score
+    #             result["risk_score"] = self._calculate_risk_score(result)
+                
+    #             # Add metadata
+    #             if metadata:
+    #                 result["metadata"] = {**result.get("metadata", {}), **metadata}
+                
+    #             return result
+                
+    #     except Exception as e:
+    #         print(f"Error processing contract: {e}")
+    #         return self._get_fallback_extraction()
+
+    def clean_db_values(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean data for database storage (remove NaN values from JSON fields)"""
+        import math
+        import json
+        
+        def clean_value(value):
+            if isinstance(value, float):
+                if math.isnan(value):
+                    return None
+                elif math.isinf(value):
+                    return None
+                return value
+            elif isinstance(value, dict):
+                cleaned = {}
+                for k, v in value.items():
+                    cleaned[k] = clean_value(v)
+                return cleaned
+            elif isinstance(value, list):
+                return [clean_value(item) for item in value]
+            elif value is None:
+                return None
+            else:
+                # Try to handle string representations of NaN
+                if isinstance(value, str):
+                    if value.lower() in ['nan', 'inf', '-inf', 'infinity', '-infinity']:
+                        return None
+                return value
+        
+        cleaned_data = {}
+        for key, value in data.items():
+            if key in ['parties', 'signatories', 'contacts', 'clauses', 'key_fields', 
+                    'extracted_metadata', 'extracted_tables_data', 'service_levels',
+                    'deliverables', 'risk_factors']:
+                # These are JSON fields, need special handling
+                if value is None:
+                    cleaned_data[key] = None
+                elif isinstance(value, str):
+                    try:
+                        # Try to parse and clean JSON string
+                        parsed = json.loads(value)
+                        cleaned = clean_value(parsed)
+                        cleaned_data[key] = json.dumps(cleaned, ensure_ascii=False)
+                    except:
+                        # If it's not valid JSON, keep as is
+                        cleaned_data[key] = value
+                else:
+                    # Already a Python object, clean and serialize
+                    cleaned = clean_value(value)
+                    cleaned_data[key] = json.dumps(cleaned, ensure_ascii=False) if cleaned is not None else None
+            else:
+                # Non-JSON fields
+                cleaned_data[key] = clean_value(value)
+        
+        return cleaned_data
+
 
     def _merge_chunk_extractions(self, chunk_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Merge multiple chunk extractions into a single comprehensive result"""

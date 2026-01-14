@@ -50,32 +50,58 @@ const CompletionDialog = ({
         
         <Box sx={{ mt: 2, mb: 2 }}>
           {/* Successful files */}
-          {completedFiles.map((file, idx) => (
-            <Paper 
-              key={idx} 
-              sx={{ 
-                p: 1.5, 
-                mb: 1, 
-                bgcolor: 'success.50',
-                border: '1px solid',
-                borderColor: 'success.light',
-                borderRadius: 2,
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CheckCircleOutlined fontSize="small" color="success" />
+        
+{completedFiles.map((file, idx) => (
+    <Paper 
+        key={idx} 
+        sx={{ 
+            p: 1.5, 
+            mb: 1, 
+            bgcolor: file.amendmentApplied ? 'success.50' : 'info.50',
+            border: '1px solid',
+            borderColor: file.amendmentApplied ? 'success.light' : 'info.light',
+            borderRadius: 2,
+        }}
+    >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CheckCircleOutlined fontSize="small" color={file.amendmentApplied ? "success" : "info"} />
+            <Box sx={{ flex: 1 }}>
                 <Typography variant="body2" sx={{ flex: 1 }}>
-                  {file.fileName}
+                    {file.fileName}
                 </Typography>
+                {file.amendmentApplied ? (
+                    <>
+                        <Typography variant="caption" color="text.secondary">
+                            Amendment auto-applied to parent contract
+                        </Typography>
+                        {file.newParentVersion && (
+                            <Typography variant="caption" color="success.main" sx={{ ml: 1 }}>
+                                Parent updated to v{file.newParentVersion}
+                            </Typography>
+                        )}
+                    </>
+                ) : null}
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
                 <Chip 
-                  label="Success" 
-                  size="small" 
-                  color="success"
-                  sx={{ fontWeight: 500 }}
+                    label={file.amendmentApplied ? "Applied" : "Success"} 
+                    size="small" 
+                    color={file.amendmentApplied ? "success" : "primary"}
+                    sx={{ fontWeight: 500 }}
                 />
-              </Box>
-            </Paper>
-          ))}
+                {file.amendmentApplied && (
+                    <Chip 
+                        label={`v${file.newParentVersion}`}
+                        size="small"
+                        variant="outlined"
+                        color="success"
+                        sx={{ fontWeight: 500 }}
+                    />
+                )}
+            </Box>
+        </Box>
+    </Paper>
+))}
           
           {/* Error files */}
           {errorFiles.map((file, idx) => (
